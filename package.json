@@ -1,8 +1,7 @@
 {
   "name": "eventos-haru",
   "version": "1.0.0",
-  "description": "Eventos Haru - Controle de Produtos para Eventos",
-  "main": "api/index.js",
+  "description": "Controle de produtos para eventos",
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0"
   },
