@@ -47,6 +47,7 @@ function showPage(id) {
 
 function goPage(id) {
   showPage(id);
+  if (id === 'page-eventos') carregarEventos();
 }
 
 function goApp(tela) {
