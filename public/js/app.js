@@ -22,6 +22,11 @@ let csvDados = [];
 //  BOOT
 // ═══════════════════════════════════════════
 document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('admin-user-perfil')
+    .addEventListener('change', function() {
+      document.getElementById('campo-ver-relatorio').style.display =
+        this.value === 'admin' ? 'none' : 'block';
+    });
   // Atalhos teclado login
   document.getElementById('login-senha')
     .addEventListener('keydown', e => { if (e.key === 'Enter') doLogin(); });
@@ -41,12 +46,10 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('csv-file')
     .addEventListener('change', lerCSV);
 
-  if (sessao) {
-    mostrarHome();
-  } else {
-    showPage('page-login');
-    esconderLoading();
-  }
+  // Login desativado temporariamente
+  sessao = { username: 'haru', nome: 'Haru', perfil: 'admin' };
+  sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
+  mostrarHome();
 });
 
 // ═══════════════════════════════════════════
@@ -1034,8 +1037,17 @@ function abrirModalUsuarioAdmin(user = null) {
   document.getElementById('admin-user-login').value  = user?.usuario || '';
   document.getElementById('admin-user-nome').value   = user?.nome    || '';
   document.getElementById('admin-user-senha').value  = '';
-  document.getElementById('admin-user-perfil').value = user?.perfil  || 'funcionario';
+  document.getElementById('admin-user-perfil').value     = user?.perfil        || 'funcionario';
+  document.getElementById('admin-user-relatorio').checked = user?.ver_relatorio || false;
+  // Admin sempre vê relatório — esconde o campo
+  document.getElementById('campo-ver-relatorio').style.display =
+    (user?.perfil === 'admin') ? 'none' : 'block';
   abrirModal('modal-usuario-admin');
+  document.getElementById('admin-user-perfil')
+    .addEventListener('change', function() {
+      document.getElementById('campo-ver-relatorio').style.display =
+        this.value === 'admin' ? 'none' : 'block';
+    });
 }
 
 async function salvarUsuarioAdmin() {
@@ -1045,10 +1057,12 @@ async function salvarUsuarioAdmin() {
   const perfil = document.getElementById('admin-user-perfil').value;
   if (!login || !nome) { toast('Preencha login e nome', 'error'); return; }
   mostrarLoading('Salvando...');
+  const verRelatorio = document.getElementById('admin-user-relatorio').checked;
   try {
     await api('salvarUsuario', {
       id: usuarioAdminEditandoId,
-      usuario: login, nome, senha, perfil
+      usuario: login, nome, senha, perfil,
+      ver_relatorio: verRelatorio
     });
     fecharModal('modal-usuario-admin');
     toast('Usuário salvo!', 'success');

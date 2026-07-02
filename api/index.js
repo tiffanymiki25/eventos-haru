@@ -41,7 +41,13 @@ async function addLog(usuario, evento_id, acao, detalhe) {
 // ── VALIDAR USUÁRIO ──────────────────────────
 // Verifica se o usuário está ativo no banco
 async function getUsuario(username) {
-  return { usuario: 'haru', nome: 'Haru', perfil: 'admin', ativo: true };
+  const { data } = await supabase
+    .from('usuarios')
+    .select('usuario, nome, perfil, ativo, ver_relatorio')
+    .eq('usuario', username)
+    .eq('ativo', true)
+    .single();
+  return data;
 }
 
 // ═══════════════════════════════════════════
@@ -147,11 +153,12 @@ async function login(res, body) {
   await addLog(username, null, 'LOGIN', 'Acesso realizado');
 
   return ok(res, {
-    ok: true,
-    username: user.usuario,
-    nome: user.nome,
-    perfil: user.perfil
-  });
+      ok: true,
+      username: user.usuario,
+      nome: user.nome,
+      perfil: user.perfil,
+      ver_relatorio: user.ver_relatorio || false
+    });
 }
 
 // ═══════════════════════════════════════════
@@ -485,6 +492,8 @@ async function removerDoEvento(res, body) {
 async function getRelatorio(res, body) {
   const { eventoId } = body;
   if (!eventoId) return err(res, 'eventoId obrigatório');
+  if (!body._user.ver_relatorio && body._user.perfil !== 'admin')
+    return err(res, 'Sem permissão para acessar o relatório', 403);
 
   const { data, error } = await supabase
     .from('evento_produtos')
@@ -516,7 +525,10 @@ async function getRelatorio(res, body) {
 }
 
 async function getComparativo(res, body) {
+  if (!body._user.ver_relatorio && body._user.perfil !== 'admin')
+    return err(res, 'Sem permissão para acessar o relatório', 403);
   // Busca todos os eventos com seus produtos
+
   const { data: eventos, error: evErr } = await supabase
     .from('eventos')
     .select('id, nome, data, status')
@@ -587,7 +599,8 @@ async function salvarUsuario(res, body) {
     usuario: usuario.toLowerCase().trim(),
     nome,
     perfil,
-    ativo: true
+    ativo: true,
+    ver_relatorio: body.ver_relatorio === true || perfil === 'admin'
   };
   if (senha) registro.senha = senha;
 
