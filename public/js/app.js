@@ -41,10 +41,12 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('csv-file')
     .addEventListener('change', lerCSV);
 
-  // Login desativado temporariamente
-  sessao = { username: 'haru', nome: 'Haru', perfil: 'admin' };
-  sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
-  mostrarHome();
+  if (sessao) {
+    mostrarHome();
+  } else {
+    showPage('page-login');
+    esconderLoading();
+  }
 });
 
 // ═══════════════════════════════════════════
