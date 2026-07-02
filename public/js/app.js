@@ -77,8 +77,8 @@ function voltarHome() {
 async function api(action, body = {}) {
   const payload = {
     action,
-    username: sessao?.username || '',
-    ...body
+    ...body,
+    username: body.username || sessao?.username || ''
   };
 
   const ctrl    = new AbortController();
