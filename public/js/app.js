@@ -30,13 +30,10 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   });
 
-  // Inicia o app
-  if (sessao) {
-    mostrarHome();
-  } else {
-    showPage('page-login');
-    esconderLoading();
-  }
+  // Login desativado temporariamente
+  sessao = { username: 'haru', nome: 'Haru', perfil: 'admin' };
+  sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
+  mostrarHome();
 });
 
 // ═══════════════════════════════════════════
