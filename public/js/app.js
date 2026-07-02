@@ -133,7 +133,7 @@ async function doLogin() {
   mostrarLoading('Autenticando...');
 
   try {
-    const data = await api('login', { senha });
+    const data = await api('login', { senha, username: usuario });
 
     // Salva sessão
     sessao = { username: data.username, nome: data.nome, perfil: data.perfil };
