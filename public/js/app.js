@@ -238,10 +238,16 @@ function abrirMenuUsuario() {
 }
 
 // ═══════════════════════════════════════════
-//  EVENTOS (seleção)
+//  EVENTOS
 // ═══════════════════════════════════════════
-// (será expandido no Passo 8)
+let eventoSelecionadoModal = null;
+
 async function carregarEventos() {
+  // Mostra botão novo evento só para admin
+  const btnNovo = document.getElementById('btn-novo-evento');
+  if (btnNovo) btnNovo.style.display =
+    sessao?.perfil === 'admin' ? 'block' : 'none';
+
   mostrarLoading('Carregando eventos...');
   try {
     const data = await api('getEventos');
@@ -258,36 +264,146 @@ function renderEventos(lista) {
   if (!el) return;
 
   if (!lista.length) {
-    el.innerHTML = emptyState('Nenhum evento criado ainda');
+    el.innerHTML = emptyState('Nenhum evento criado ainda.<br>Peça ao administrador para criar um evento.');
     return;
   }
 
+  // Ordena: ativos primeiro
   const sorted = [...lista].sort((a, b) =>
     a.status === b.status ? 0 : a.status === 'ativo' ? -1 : 1
   );
 
   el.innerHTML = sorted.map(ev => `
-    <div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer"
-         onclick="selecionarEvento(${JSON.stringify(ev).replace(/"/g, '&quot;')})">
+    <div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer;transition:transform .15s"
+         onclick="abrirOpcoesEvento(${JSON.stringify(ev).replace(/"/g, '&quot;')})"
+         onmousedown="this.style.transform='scale(.98)'"
+         onmouseup="this.style.transform='scale(1)'">
       <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:700;color:var(--text)">${esc(ev.nome)}</div>
-        <div style="font-size:11px;color:var(--text-4);margin-top:2px">${ev.data}</div>
+        <div style="font-size:14px;font-weight:700;color:var(--text);
+                    white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+          ${esc(ev.nome)}
+        </div>
+        <div style="font-size:11px;color:var(--text-4);margin-top:3px">
+          ${ev.data}
+          ${ev.markup > 0 ? `· Markup: ${ev.markup}%` : ''}
+        </div>
       </div>
-      <span class="badge badge-${ev.status}">${ev.status}</span>
-      ${eventoAtivo?.id === ev.id
-        ? '<svg width="18" viewBox="0 0 24 24" fill="none" stroke="#16a34a" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>'
-        : ''}
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+        <span class="badge badge-${ev.status}">${ev.status}</span>
+        ${eventoAtivo?.id === ev.id
+          ? `<svg width="18" viewBox="0 0 24 24" fill="none"
+               stroke="var(--verde)" stroke-width="2.5">
+               <path d="M20 6L9 17l-5-5"/>
+             </svg>`
+          : ''}
+      </div>
     </div>
   `).join('');
 }
 
-function selecionarEvento(ev) {
-  eventoAtivo = ev;
-  localStorage.setItem('haru_evento', JSON.stringify(ev));
+function abrirOpcoesEvento(ev) {
+  eventoSelecionadoModal = ev;
+  document.getElementById('modal-opcoes-evento-nome').textContent = ev.nome;
+
+  // Mostra opções de admin apenas para admins
+  const isAdmin = sessao?.perfil === 'admin';
+  document.getElementById('btn-encerrar-evento').style.display =
+    isAdmin && ev.status === 'ativo' ? 'flex' : 'none';
+  document.getElementById('btn-deletar-evento').style.display =
+    isAdmin ? 'flex' : 'none';
+
+  abrirModal('modal-opcoes-evento');
+}
+
+function confirmarSelecaoEvento() {
+  if (!eventoSelecionadoModal) return;
+  eventoAtivo = eventoSelecionadoModal;
+  localStorage.setItem('haru_evento', JSON.stringify(eventoAtivo));
   produtos = [];
+  fecharModal('modal-opcoes-evento');
   atualizarBadgeEvento();
-  toast('Evento "' + ev.nome + '" selecionado!', 'success');
-  setTimeout(() => mostrarHome(), 800);
+  toast('Evento "' + eventoAtivo.nome + '" selecionado!', 'success');
+  setTimeout(() => voltarHome(), 600);
+}
+
+function abrirModalNovoEvento() {
+  document.getElementById('novo-evento-nome').value    = '';
+  document.getElementById('novo-evento-markup').value  = '0';
+  document.getElementById('novo-evento-arred').value   = 'true';
+  fecharModal('modal-opcoes-evento');
+  abrirModal('modal-novo-evento');
+  setTimeout(() => document.getElementById('novo-evento-nome').focus(), 300);
+}
+
+async function criarEvento() {
+  const nome  = document.getElementById('novo-evento-nome').value.trim();
+  const markup = document.getElementById('novo-evento-markup').value;
+  const arred  = document.getElementById('novo-evento-arred').value === 'true';
+
+  if (!nome) {
+    toast('Digite o nome do evento', 'error');
+    return;
+  }
+
+  mostrarLoading('Criando evento...');
+  try {
+    const data = await api('criarEvento', { nome, markup, arredondamento: arred });
+    fecharModal('modal-novo-evento');
+    toast('Evento criado!', 'success');
+    await carregarEventos();
+    // Seleciona automaticamente o evento criado
+    eventoAtivo = data.evento;
+    localStorage.setItem('haru_evento', JSON.stringify(eventoAtivo));
+    atualizarBadgeEvento();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    esconderLoading();
+  }
+}
+
+async function encerrarEvento() {
+  if (!eventoSelecionadoModal) return;
+  if (!confirm('Encerrar o evento "' + eventoSelecionadoModal.nome + '"?')) return;
+
+  mostrarLoading('Encerrando...');
+  try {
+    await api('encerrarEvento', { eventoId: eventoSelecionadoModal.id });
+    if (eventoAtivo?.id === eventoSelecionadoModal.id) {
+      eventoAtivo = null;
+      localStorage.removeItem('haru_evento');
+      atualizarBadgeEvento();
+    }
+    fecharModal('modal-opcoes-evento');
+    toast('Evento encerrado', 'info');
+    await carregarEventos();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    esconderLoading();
+  }
+}
+
+async function deletarEvento() {
+  if (!eventoSelecionadoModal) return;
+  if (!confirm('Remover permanentemente o evento "' + eventoSelecionadoModal.nome + '"?\nTodos os produtos serão removidos.')) return;
+
+  mostrarLoading('Removendo...');
+  try {
+    await api('deletarEvento', { eventoId: eventoSelecionadoModal.id });
+    if (eventoAtivo?.id === eventoSelecionadoModal.id) {
+      eventoAtivo = null;
+      localStorage.removeItem('haru_evento');
+      atualizarBadgeEvento();
+    }
+    fecharModal('modal-opcoes-evento');
+    toast('Evento removido', 'info');
+    await carregarEventos();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    esconderLoading();
+  }
 }
 
 // ═══════════════════════════════════════════
