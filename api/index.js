@@ -28,12 +28,14 @@ function err(res, msg, status = 400) {
 
 // ── LOG DE AÇÕES ────────────────────────────
 async function addLog(usuario, evento_id, acao, detalhe) {
-  await supabase.from('historico').insert({
-    usuario,
-    evento_id: evento_id || null,
-    acao,
-    detalhe: detalhe || null
-  }).catch(() => {});
+  try {
+    await supabase.from('historico').insert({
+      usuario,
+      evento_id: evento_id || null,
+      acao,
+      detalhe: detalhe || null
+    });
+  } catch (e) {}
 }
 
 // ── VALIDAR USUÁRIO ──────────────────────────
