@@ -802,6 +802,7 @@ function iniciarPesquisa() {
   document.getElementById('pesquisa-input').value = '';
   document.getElementById('pesquisa-resultados').innerHTML =
     emptyState('Digite para pesquisar');
+  document.getElementById('pesquisa-scanner-wrap').style.display = 'none';
   setTimeout(() => document.getElementById('pesquisa-input').focus(), 300);
 }
 
@@ -813,20 +814,21 @@ function toggleScannerPesquisa() {
     scannerPesquisaAtivo = false;
     document.getElementById('pesquisa-scanner-wrap').style.display = 'none';
     document.getElementById('pesquisa-scan-btn').style.color = 'var(--text-4)';
-  } else {
-    document.getElementById('pesquisa-scanner-wrap').style.display = 'block';
-    document.getElementById('pesquisa-scan-btn').style.color = 'var(--rosa)';
-    document.getElementById('pesquisa-scanner-idle').style.display = 'flex';
-    document.getElementById('pesquisa-scanner-overlay').style.display = 'none';
-    scannerPesquisaAtivo = true;
-    startScanner('video-pesquisa', (codigo) => {
-      scannerPesquisaAtivo = false;
-      document.getElementById('pesquisa-scanner-wrap').style.display = 'none';
-      document.getElementById('pesquisa-scan-btn').style.color = 'var(--text-4)';
-      document.getElementById('pesquisa-input').value = codigo;
-      renderPesquisa();
-    });
+    return;
   }
+  scannerPesquisaAtivo = true;
+  document.getElementById('pesquisa-scanner-wrap').style.display = 'block';
+  document.getElementById('pesquisa-scan-btn').style.color = 'var(--rosa)';
+  document.getElementById('pesquisa-scanner-idle').style.display = 'flex';
+  document.getElementById('pesquisa-scanner-overlay').style.display = 'none';
+  startScanner('video-pesquisa', (codigo) => {
+    scannerPesquisaAtivo = false;
+    document.getElementById('pesquisa-scanner-wrap').style.display = 'none';
+    document.getElementById('pesquisa-scan-btn').style.color = 'var(--text-4)';
+    document.getElementById('pesquisa-input').value = codigo;
+    renderPesquisa();
+    toast('Código lido: ' + codigo, 'success');
+  });
 }
 
 function renderPesquisa() {
@@ -1139,23 +1141,38 @@ function loadZXing(cb) {
 function startScanner(videoId, onResult) {
   loadZXing(async () => {
     try {
-      const video  = document.getElementById(videoId);
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-      video.srcObject = stream;
-      video.style.display = 'block';
-      await video.play();
+      const video = document.getElementById(videoId);
       const hints = new Map();
       hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
         ZXing.BarcodeFormat.EAN_13, ZXing.BarcodeFormat.EAN_8,
         ZXing.BarcodeFormat.CODE_128, ZXing.BarcodeFormat.CODE_39,
         ZXing.BarcodeFormat.UPC_A, ZXing.BarcodeFormat.QR_CODE
       ]);
+      hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
+
       _scannerReader = new ZXing.BrowserMultiFormatReader(hints);
-      _scannerReader.decodeFromVideoElement(video, (result) => {
-        if (result) { stopScanner(); onResult(result.getText()); }
-      });
+
+      await _scannerReader.decodeFromConstraints(
+        {
+          audio: false,
+          video: {
+            facingMode: 'environment',
+            width:  { ideal: 1280 },
+            height: { ideal: 720 }
+          }
+        },
+        videoId,
+        (result, err) => {
+          if (result) {
+            stopScanner();
+            onResult(result.getText());
+          }
+        }
+      );
+      video.style.display = 'block';
     } catch (e) {
-      toast('Erro ao acessar a câmera', 'error');
+      console.error('Scanner error:', e);
+      toast('Erro ao acessar a câmera: ' + e.message, 'error');
     }
   });
 }
@@ -1166,14 +1183,17 @@ function stopScanner() {
     _scannerReader = null;
   }
   document.querySelectorAll('video').forEach(v => {
-    if (v.srcObject) {
-      v.srcObject.getTracks().forEach(t => t.stop());
-      v.srcObject = null;
-    }
-    v.style.display = 'none';
+    try {
+      if (v.srcObject) {
+        v.srcObject.getTracks().forEach(t => t.stop());
+        v.srcObject = null;
+      }
+      v.style.display = 'none';
+    } catch(e) {}
   });
-  scannerEntradaAtivo = false;
-  scannerRetornoAtivo = false;
+  scannerEntradaAtivo  = false;
+  scannerRetornoAtivo  = false;
+  scannerPesquisaAtivo = false;
 }
 
 // ═══════════════════════════════════════════
