@@ -805,6 +805,30 @@ function iniciarPesquisa() {
   setTimeout(() => document.getElementById('pesquisa-input').focus(), 300);
 }
 
+let scannerPesquisaAtivo = false;
+
+function toggleScannerPesquisa() {
+  if (scannerPesquisaAtivo) {
+    stopScanner();
+    scannerPesquisaAtivo = false;
+    document.getElementById('pesquisa-scanner-wrap').style.display = 'none';
+    document.getElementById('pesquisa-scan-btn').style.color = 'var(--text-4)';
+  } else {
+    document.getElementById('pesquisa-scanner-wrap').style.display = 'block';
+    document.getElementById('pesquisa-scan-btn').style.color = 'var(--rosa)';
+    document.getElementById('pesquisa-scanner-idle').style.display = 'flex';
+    document.getElementById('pesquisa-scanner-overlay').style.display = 'none';
+    scannerPesquisaAtivo = true;
+    startScanner('video-pesquisa', (codigo) => {
+      scannerPesquisaAtivo = false;
+      document.getElementById('pesquisa-scanner-wrap').style.display = 'none';
+      document.getElementById('pesquisa-scan-btn').style.color = 'var(--text-4)';
+      document.getElementById('pesquisa-input').value = codigo;
+      renderPesquisa();
+    });
+  }
+}
+
 function renderPesquisa() {
   const busca = document.getElementById('pesquisa-input').value.toLowerCase().trim();
   const el    = document.getElementById('pesquisa-resultados');

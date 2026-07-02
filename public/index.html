@@ -269,9 +269,40 @@
     </div>
   </div>
   <div class="page-content">
-    <div class="search-wrap mb-12">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-      <input class="input" type="text" id="pesquisa-input" placeholder="Buscar por nome ou código..." oninput="renderPesquisa()"/>
+    <!-- Barra de busca com botão scanner -->
+    <div style="position:relative;margin-bottom:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;color:var(--text-4);pointer-events:none">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input class="input" type="text" id="pesquisa-input"
+             placeholder="Buscar por nome ou código..."
+             oninput="renderPesquisa()"
+             style="padding-left:38px;padding-right:48px"/>
+      <button id="pesquisa-scan-btn" onclick="toggleScannerPesquisa()"
+              title="Escanear código de barras"
+              style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:var(--text-4);display:flex;align-items:center;padding:4px;transition:color .2s">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:20px;height:20px">
+          <rect x="2" y="6" width="20" height="12" rx="2"/>
+          <path d="M5 9v6M8 8v8M11 9v6M14 8v8M17 9v6"/>
+        </svg>
+      </button>
+    </div>
+    <!-- Scanner -->
+    <div id="pesquisa-scanner-wrap" style="display:none;margin-bottom:12px">
+      <div class="scanner-wrap" style="aspect-ratio:3/1.5">
+        <div class="scanner-idle" id="pesquisa-scanner-idle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M5 9v6M8 8v8M11 9v6M14 8v8M17 9v6"/></svg>
+          Aponte para o código de barras
+        </div>
+        <video id="video-pesquisa" style="display:none" playsinline></video>
+        <div class="scanner-overlay" id="pesquisa-scanner-overlay" style="display:none">
+          <div class="scanner-frame"><div class="scanner-line"></div></div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="toggleScannerPesquisa()">
+        Fechar câmera
+      </button>
     </div>
     <div id="pesquisa-resultados"></div>
     <div style="height:20px"></div>
