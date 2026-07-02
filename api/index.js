@@ -115,20 +115,35 @@ module.exports = async function handler(req, res) {
 //  AUTH
 // ═══════════════════════════════════════════
 async function login(res, body) {
-  const { username, senha } = body;
+  const username = String(body.username || '').toLowerCase().trim();
+  const senha    = String(body.senha    || '').trim();
+
+  console.log('LOGIN body recebido:', JSON.stringify(body));
+  console.log('username:', username, '| senha:', senha);
+
   if (!username || !senha) return err(res, 'Preencha usuário e senha');
 
-  const { data: user } = await supabase
+  const { data: users, error: dbErr } = await supabase
     .from('usuarios')
-    .select('usuario, nome, perfil, ativo')
-    .eq('usuario', username.toLowerCase().trim())
-    .eq('senha', senha)
-    .single();
+    .select('usuario, nome, perfil, ativo, senha')
+    .eq('usuario', username);
 
-  if (!user)        return err(res, 'Usuário ou senha incorretos');
-  if (!user.ativo)  return err(res, 'Usuário inativo. Fale com o administrador.');
+  console.log('Users encontrados:', JSON.stringify(users));
+  console.log('DB error:', JSON.stringify(dbErr));
 
-  // Atualiza último acesso
+  if (dbErr || !users || users.length === 0)
+    return err(res, 'Usuário ou senha incorretos');
+
+  const user = users[0];
+
+  console.log('Senha no banco:', user.senha, '| Senha enviada:', senha);
+
+  if (user.senha !== senha)
+    return err(res, 'Usuário ou senha incorretos');
+
+  if (!user.ativo)
+    return err(res, 'Usuário inativo. Fale com o administrador.');
+
   await supabase.from('usuarios')
     .update({ ultimo_acesso: new Date().toISOString() })
     .eq('usuario', username);
