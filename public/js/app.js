@@ -5,7 +5,6 @@
 const API = '/api';
 
 // ── ESTADO GLOBAL ──
-// Lê sessão do localStorage com verificação de validade
 let sessao = JSON.parse(sessionStorage.getItem('haru_sessao') || 'null');
 let eventoAtivo = JSON.parse(localStorage.getItem('haru_evento')   || 'null');
 let produtos    = [];
@@ -49,7 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Login desativado temporariamente
   if (sessao) {
-    mostrarHome();
+    sincronizarEventoEmAndamento()
+      .then(() => mostrarHome())
+      .catch(() => mostrarHome());
   } else {
     showPage('page-login');
     esconderLoading();
