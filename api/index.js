@@ -50,6 +50,11 @@ async function getUsuario(username) {
   return data;
 }
 
+async function validateUser(username) {
+  const user = await getUsuario(username);
+  return !!user;
+}
+
 // ═══════════════════════════════════════════
 //  HANDLER PRINCIPAL — roteador de ações
 // ═══════════════════════════════════════════
