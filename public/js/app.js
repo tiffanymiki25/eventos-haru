@@ -6,20 +6,7 @@ const API = '/api';
 
 // ── ESTADO GLOBAL ──
 // Lê sessão do localStorage com verificação de validade
-function lerSessao() {
-  try {
-    const raw = localStorage.getItem('haru_sessao');
-    if (!raw) return null;
-    const obj = JSON.parse(raw);
-    // Verifica se expirou (7 dias)
-    if (!obj.expira || Date.now() > obj.expira) {
-      localStorage.removeItem('haru_sessao');
-      return null;
-    }
-    return obj.dados;
-  } catch(e) { return null; }
-}
-let sessao = lerSessao();
+let sessao = JSON.parse(sessionStorage.getItem('haru_sessao') || 'null');
 let eventoAtivo = JSON.parse(localStorage.getItem('haru_evento')   || 'null');
 let produtos    = [];
 let catalogo    = [];
@@ -62,9 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Login desativado temporariamente
   if (sessao) {
-    sincronizarEventoEmAndamento()
-      .then(() => mostrarHome())
-      .catch(() => mostrarHome());
+    mostrarHome();
   } else {
     showPage('page-login');
     esconderLoading();
@@ -203,11 +188,7 @@ async function doLogin() {
   try {
     const data = await api('login', { username: usuario, senha });
     sessao = { username: data.username, nome: data.nome, perfil: data.perfil, ver_relatorio: data.ver_relatorio };
-    // Salva com validade de 7 dias
-    localStorage.setItem('haru_sessao', JSON.stringify({
-      dados: sessao,
-      expira: Date.now() + 7 * 24 * 60 * 60 * 1000
-    }));
+    sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
     mostrarHome();
   } catch (e) {
     esconderLoading();
@@ -220,7 +201,7 @@ async function doLogin() {
 
 function doLogout() {
   sessao = null; eventoAtivo = null; produtos = []; catalogo = [];
-  localStorage.removeItem('haru_sessao');
+  sessionStorage.removeItem('haru_sessao');
   localStorage.removeItem('haru_evento');
   fecharModal('modal-usuario');
   showPage('page-login');
