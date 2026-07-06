@@ -62,7 +62,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Login desativado temporariamente
   if (sessao) {
-    sincronizarEventoEmAndamento().then(() => mostrarHome());
+    sincronizarEventoEmAndamento()
+      .then(() => mostrarHome())
+      .catch(() => {
+        showPage('page-home');
+        esconderLoading();
+      });
   } else {
     showPage('page-login');
     esconderLoading();
@@ -109,7 +114,12 @@ async function sincronizarEventoEmAndamento() {
       eventoAtivo = d.evento;
       localStorage.setItem('haru_evento', JSON.stringify(eventoAtivo));
     }
-  } catch (e) {}
+  } catch (e) {
+    // Silencioso — usa evento salvo localmente
+    console.warn('Sync evento falhou, usando cache local');
+  } finally {
+    esconderLoading();
+  }
 }
 
 async function definirEventoEmAndamento(eventoId) {
