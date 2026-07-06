@@ -141,7 +141,7 @@ function goPage(id) {
   if (id === 'page-home')    sincronizarEventoEmAndamento().then(() => atualizarBadgeEvento());
 }
 
-function goApp(tela) {
+async function goApp(tela) {
   if (!eventoAtivo) {
     toast('Selecione um evento primeiro!', 'error');
     goPage('page-eventos');
