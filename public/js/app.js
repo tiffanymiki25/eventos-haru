@@ -46,11 +46,18 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('csv-file')
     .addEventListener('change', lerCSV);
 
-  if (sessao) {
-    mostrarHome();
-  } else {
-    showPage('page-login');
+  // Garante que loading some em qualquer cenário
+  try {
+    if (sessao) {
+      mostrarHome();
+    } else {
+      showPage('page-login');
+      esconderLoading();
+    }
+  } catch(e) {
+    console.error('Boot error:', e);
     esconderLoading();
+    showPage('page-login');
   }
 });
 
@@ -211,19 +218,27 @@ function doLogout() {
 //  HOME
 // ═══════════════════════════════════════════
 function mostrarHome() {
-  const nome = sessao?.nome || '?';
-  document.getElementById('home-user-nome').textContent = nome.split(' ')[0];
-  document.getElementById('home-avatar').textContent = nome.charAt(0).toUpperCase();
-  document.getElementById('modal-usuario-avatar').textContent = nome.charAt(0).toUpperCase();
-  document.getElementById('modal-usuario-nome').textContent = nome;
-  document.getElementById('modal-usuario-perfil').textContent =
-    sessao?.perfil === 'admin' ? 'Administrador' : 'Funcionário';
-  document.getElementById('home-btn-admin').style.display =
-    sessao?.perfil === 'admin' ? 'block' : 'none';
-  atualizarBadgeEvento();
-  showPage('page-home');
+  // Esconde loading PRIMEIRO — garante que nunca fica preso
   esconderLoading();
-  if (eventoAtivo) prefetchProdutos();
+  try {
+    const nome = sessao?.nome || '?';
+    const el = (id) => document.getElementById(id);
+    if (el('home-user-nome'))       el('home-user-nome').textContent = nome.split(' ')[0];
+    if (el('home-avatar'))          el('home-avatar').textContent = nome.charAt(0).toUpperCase();
+    if (el('modal-usuario-avatar')) el('modal-usuario-avatar').textContent = nome.charAt(0).toUpperCase();
+    if (el('modal-usuario-nome'))   el('modal-usuario-nome').textContent = nome;
+    if (el('modal-usuario-perfil')) el('modal-usuario-perfil').textContent =
+      sessao?.perfil === 'admin' ? 'Administrador' : 'Funcionário';
+    if (el('home-btn-admin'))       el('home-btn-admin').style.display =
+      sessao?.perfil === 'admin' ? 'block' : 'none';
+    if (el('home-btn-relatorio'))   el('home-btn-relatorio').style.display =
+      (sessao?.perfil === 'admin' || sessao?.ver_relatorio) ? 'flex' : 'none';
+    atualizarBadgeEvento();
+    showPage('page-home');
+    if (eventoAtivo) prefetchProdutos();
+  } catch(e) {
+    console.error('mostrarHome error:', e);
+  }
 }
 
 function atualizarBadgeEvento() {
