@@ -81,6 +81,8 @@ module.exports = async function handler(req, res) {
       case 'editarEvento':    return await editarEvento(res, body);
       case 'encerrarEvento':  return await encerrarEvento(res, body);
       case 'deletarEvento':   return await deletarEvento(res, body);
+      case 'getEventoEmAndamento': return await getEventoEmAndamento(res, body);
+      case 'setEventoEmAndamento': return await setEventoEmAndamento(res, body);
 
       // CATÁLOGO
       case 'getCatalogo':     return await getCatalogo(res, body);
@@ -485,6 +487,41 @@ async function removerDoEvento(res, body) {
   await addLog(body.username, eventoId, 'PRODUTO_REMOVIDO', produtoId);
   return ok(res, { ok: true });
 }
+// ── EVENTO EM ANDAMENTO ──────────────────────
+async function getEventoEmAndamento(res, body) {
+  const { data, error } = await supabase
+    .from('eventos')
+    .select('*')
+    .eq('em_andamento', true)
+    .single();
+
+  if (error || !data) return ok(res, { evento: null });
+  return ok(res, { evento: data });
+}
+
+async function setEventoEmAndamento(res, body) {
+  if (body._user.perfil !== 'admin')
+    return err(res, 'Apenas administradores podem definir o evento em andamento', 403);
+
+  const { eventoId } = body;
+
+  // Desmarca todos
+  await supabase.from('eventos')
+    .update({ em_andamento: false })
+    .neq('id', eventoId || '00000000-0000-0000-0000-000000000000');
+
+  // Marca o selecionado (se vier null, apenas desmarca todos)
+  if (eventoId) {
+    const { error } = await supabase.from('eventos')
+      .update({ em_andamento: true })
+      .eq('id', eventoId);
+    if (error) return err(res, error.message);
+  }
+
+  await addLog(body.username, eventoId, 'EVENTO_EM_ANDAMENTO', eventoId || 'nenhum');
+  return ok(res, { ok: true });
+}
+
 
 // ═══════════════════════════════════════════
 //  RELATÓRIO

@@ -47,9 +47,12 @@ document.addEventListener('DOMContentLoaded', () => {
     .addEventListener('change', lerCSV);
 
   // Login desativado temporariamente
-  sessao = { username: 'haru', nome: 'Haru', perfil: 'admin' };
-  sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
-  mostrarHome();
+  if (sessao) {
+    sincronizarEventoEmAndamento().then(() => mostrarHome());
+  } else {
+    showPage('page-login');
+    esconderLoading();
+  }
 });
 
 // ═══════════════════════════════════════════
@@ -83,6 +86,38 @@ async function api(action, body = {}) {
 }
 
 // ═══════════════════════════════════════════
+//  EVENTO EM ANDAMENTO
+// ═══════════════════════════════════════════
+async function sincronizarEventoEmAndamento() {
+  try {
+    const d = await api('getEventoEmAndamento');
+    if (d.evento) {
+      eventoAtivo = d.evento;
+      localStorage.setItem('haru_evento', JSON.stringify(eventoAtivo));
+    }
+  } catch (e) {}
+}
+
+async function definirEventoEmAndamento(eventoId) {
+  mostrarLoading(eventoId ? 'Iniciando evento...' : 'Parando evento...');
+  try {
+    await api('setEventoEmAndamento', { eventoId });
+    if (eventoId) {
+      await sincronizarEventoEmAndamento();
+      atualizarBadgeEvento();
+      toast('Evento iniciado! Todos os usuários verão este evento.', 'success');
+    } else {
+      eventoAtivo = null;
+      localStorage.removeItem('haru_evento');
+      atualizarBadgeEvento();
+      toast('Evento parado.', 'info');
+    }
+    await carregarAdminEventos();
+  } catch (e) { toast(e.message, 'error'); }
+  finally { esconderLoading(); }
+}
+
+// ═══════════════════════════════════════════
 //  NAVEGAÇÃO
 // ═══════════════════════════════════════════
 function showPage(id) {
@@ -95,6 +130,7 @@ function goPage(id) {
   showPage(id);
   if (id === 'page-eventos') carregarEventos();
   if (id === 'page-admin')   carregarAdmin('eventos');
+  if (id === 'page-home')    sincronizarEventoEmAndamento().then(() => atualizarBadgeEvento());
 }
 
 function goApp(tela) {
@@ -135,7 +171,7 @@ async function doLogin() {
   mostrarLoading('Autenticando...');
   try {
     const data = await api('login', { username: usuario, senha });
-    sessao = { username: data.username, nome: data.nome, perfil: data.perfil };
+    sessao = { username: data.username, nome: data.nome, perfil: data.perfil, ver_relatorio: data.ver_relatorio };
     sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
     mostrarHome();
   } catch (e) {
@@ -906,11 +942,19 @@ async function carregarAdminEventos() {
             <div style="flex:1;min-width:0">
               <div style="font-size:14px;font-weight:700">${esc(ev.nome)}</div>
               <div style="font-size:11px;color:var(--text-4)">${ev.data} · Markup: ${ev.markup || 0}%</div>
+              ${ev.em_andamento ? `<span class="badge badge-ativo" style="margin-top:4px">▶ Em andamento</span>` : ''}
             </div>
             <span class="badge badge-${ev.status}">${ev.status}</span>
-            <button class="btn btn-icon btn-danger" onclick='abrirOpcoesEvento(${JSON.stringify(ev)})'>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
-            </button>
+            <div style="display:flex;flex-direction:column;gap:4px">
+              ${ev.status === 'ativo' && !ev.em_andamento
+                ? `<button class="btn btn-success btn-sm" style="font-size:11px;width:auto;padding:5px 10px" onclick="definirEventoEmAndamento('${ev.id}')">▶ Iniciar</button>`
+                : ev.em_andamento
+                ? `<button class="btn btn-secondary btn-sm" style="font-size:11px;width:auto;padding:5px 10px" onclick="definirEventoEmAndamento(null)">⏹ Parar</button>`
+                : ''}
+              <button class="btn btn-icon btn-secondary" onclick='abrirOpcoesEvento(${JSON.stringify(ev)})'>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+              </button>
+            </div>
           </div>`).join('') : emptyState('Nenhum evento criado')}
       </div>`;
   } catch (e) {
