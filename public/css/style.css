@@ -786,3 +786,30 @@ textarea.input { resize: vertical; min-height: 80px; }
 .mt-16  { margin-top: 16px; }
 .p-16   { padding: 16px; }
 .hidden { display: none !important; }
+
+/* ── PDV ── */
+.pdv-pag-btn {
+  background: var(--surface);
+  border: 2px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-3);
+  cursor: pointer;
+  transition: all .2s;
+  text-align: center;
+}
+.pdv-pag-btn:active { transform: scale(.97); }
+.pdv-pag-btn.selected {
+  background: var(--rosa-light);
+  border-color: var(--rosa);
+  color: var(--rosa);
+}
+
+.home-btn.pdv {
+  border-color: #c4b5fd;
+  background: #f5f3ff;
+  color: #7c3aed;
+}

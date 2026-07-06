@@ -100,6 +100,10 @@ module.exports = async function handler(req, res) {
       // RELATÓRIO
       case 'getRelatorio':       return await getRelatorio(res, body);
       case 'getComparativo':     return await getComparativo(res, body);
+      case 'registrarVenda':       return await registrarVenda(res, body);
+      case 'getVendas':            return await getVendas(res, body);
+      case 'cancelarVenda':        return await cancelarVenda(res, body);
+      case 'getRelatorioVendedor': return await getRelatorioVendedor(res, body);
 
       // USUÁRIOS (admin)
       case 'getUsuarios':     return await getUsuarios(res, body);
@@ -681,4 +685,125 @@ async function toggleUsuario(res, body) {
   await addLog(body.username, null,
     ativo ? 'USUARIO_ATIVADO' : 'USUARIO_DESATIVADO', id);
   return ok(res, { ok: true });
+}
+
+// ═══════════════════════════════════════════
+//  PDV
+// ═══════════════════════════════════════════
+async function registrarVenda(res, body) {
+  if (!await validateUser(body.username)) return err(res, 'Sessão inválida', 401);
+
+  const { eventoId, itens, subtotal, desconto, total,
+          forma_pagamento, valor_recebido } = body;
+
+  if (!eventoId)           return err(res, 'eventoId obrigatório');
+  if (!itens?.length)      return err(res, 'Carrinho vazio');
+  if (!forma_pagamento)    return err(res, 'Forma de pagamento obrigatória');
+
+  const troco = forma_pagamento === 'dinheiro' && valor_recebido
+    ? parseFloat(valor_recebido) - parseFloat(total)
+    : null;
+
+  const { data, error } = await supabase
+    .from('vendas')
+    .insert({
+      evento_id:       eventoId,
+      vendedor:        body.username,
+      itens,
+      subtotal:        parseFloat(subtotal) || 0,
+      desconto:        parseFloat(desconto) || 0,
+      total:           parseFloat(total) || 0,
+      forma_pagamento,
+      valor_recebido:  valor_recebido ? parseFloat(valor_recebido) : null,
+      troco,
+      status:          'concluida'
+    })
+    .select()
+    .single();
+
+  if (error) return err(res, error.message);
+
+  await addLog(body.username, eventoId, 'VENDA',
+    `R$${total} | ${forma_pagamento} | ${itens.length} itens`);
+
+  return ok(res, { ok: true, venda: data });
+}
+
+async function getVendas(res, body) {
+  if (!await validateUser(body.username)) return err(res, 'Sessão inválida', 401);
+
+  const { eventoId } = body;
+  if (!eventoId) return err(res, 'eventoId obrigatório');
+
+  const { data, error } = await supabase
+    .from('vendas')
+    .select('*')
+    .eq('evento_id', eventoId)
+    .order('criado_em', { ascending: false });
+
+  if (error) return err(res, error.message);
+  return ok(res, { vendas: data });
+}
+
+async function cancelarVenda(res, body) {
+  if (!await validateUser(body.username)) return err(res, 'Sessão inválida', 401);
+
+  const { vendaId } = body;
+  if (!vendaId) return err(res, 'vendaId obrigatório');
+
+  // Verifica se é o próprio vendedor ou admin
+  const { data: venda } = await supabase
+    .from('vendas')
+    .select('vendedor, evento_id, total')
+    .eq('id', vendaId)
+    .single();
+
+  if (!venda) return err(res, 'Venda não encontrada');
+
+  const user = await getUsuario(body.username);
+  if (venda.vendedor !== body.username && user?.perfil !== 'admin')
+    return err(res, 'Sem permissão para cancelar esta venda', 403);
+
+  const { error } = await supabase
+    .from('vendas')
+    .update({ status: 'cancelada' })
+    .eq('id', vendaId);
+
+  if (error) return err(res, error.message);
+
+  await addLog(body.username, venda.evento_id, 'VENDA_CANCELADA',
+    `Venda ${vendaId} | R$${venda.total}`);
+
+  return ok(res, { ok: true });
+}
+
+async function getRelatorioVendedor(res, body) {
+  if (!await validateUser(body.username)) return err(res, 'Sessão inválida', 401);
+
+  const { eventoId } = body;
+  if (!eventoId) return err(res, 'eventoId obrigatório');
+
+  const { data, error } = await supabase
+    .from('vendas')
+    .select('vendedor, total, itens, status, criado_em')
+    .eq('evento_id', eventoId)
+    .eq('status', 'concluida');
+
+  if (error) return err(res, error.message);
+
+  // Agrupa por vendedor
+  const byVendedor = {};
+  data.forEach(v => {
+    if (!byVendedor[v.vendedor]) {
+      byVendedor[v.vendedor] = { vendedor: v.vendedor, totalVendas: 0, totalValor: 0, totalItens: 0 };
+    }
+    byVendedor[v.vendedor].totalVendas++;
+    byVendedor[v.vendedor].totalValor  += parseFloat(v.total);
+    byVendedor[v.vendedor].totalItens  += v.itens.reduce((s, i) => s + i.qtd, 0);
+  });
+
+  const ranking = Object.values(byVendedor)
+    .sort((a, b) => b.totalValor - a.totalValor);
+
+  return ok(res, { ranking });
 }

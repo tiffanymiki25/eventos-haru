@@ -145,6 +145,10 @@ function goApp(tela) {
   if (tela === 'retorno')   carregarRetorno();
   if (tela === 'relatorio') carregarRelatorio();
   if (tela === 'pesquisa')  iniciarPesquisa();
+  if (tela === 'pdv') {
+    showPage('page-pdv');
+    iniciarPdv();
+  }
 }
 
 function voltarHome() {
@@ -1181,6 +1185,310 @@ async function importarCSV() {
     toast(e.message, 'error');
   } finally {
     esconderLoading();
+  }
+}
+
+// ═══════════════════════════════════════════
+//  PDV
+// ═══════════════════════════════════════════
+let carrinho = [];
+let pagamentoSelecionado = null;
+let scannerPdvAtivo = false;
+
+function iniciarPdv() {
+  const el = document.getElementById('pdv-evento-nome');
+  if (el) el.textContent = eventoAtivo?.nome || '';
+  carrinho = [];
+  pagamentoSelecionado = null;
+  document.getElementById('pdv-desconto').value  = '0';
+  document.getElementById('pdv-recebido').value  = '';
+  document.getElementById('pdv-troco-val').textContent = 'R$ 0,00';
+  document.getElementById('pdv-troco-wrap').style.display = 'none';
+  document.getElementById('btn-confirmar-venda').disabled = true;
+  // Desmarca pagamento
+  document.querySelectorAll('.pdv-pag-btn').forEach(b => b.classList.remove('selected'));
+  renderCarrinho();
+  carregarVendas();
+}
+
+// ── CARRINHO ──
+function renderCarrinho() {
+  const vazio   = document.getElementById('pdv-carrinho-vazio');
+  const lista   = document.getElementById('pdv-carrinho-lista');
+  const resumo  = document.getElementById('pdv-resumo');
+  const itensEl = document.getElementById('pdv-itens');
+
+  if (!carrinho.length) {
+    vazio.style.display  = 'block';
+    lista.style.display  = 'none';
+    resumo.style.display = 'none';
+    return;
+  }
+
+  vazio.style.display  = 'none';
+  lista.style.display  = 'block';
+  resumo.style.display = 'block';
+
+  itensEl.innerHTML = carrinho.map((item, idx) => `
+    <div class="card" style="display:flex;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.nome)}</div>
+        <div style="font-size:11px;color:var(--text-4);font-family:monospace;margin-top:2px">
+          ${item.qtd}x R$${parseFloat(item.preco_unit).toFixed(2)} = <strong>R$${(item.qtd * item.preco_unit).toFixed(2)}</strong>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <button class="qty-btn" style="width:30px;height:30px;font-size:16px" onclick="ajustarCarrinho(${idx}, -1)">−</button>
+        <span style="font-family:monospace;font-weight:700;min-width:24px;text-align:center">${item.qtd}</span>
+        <button class="qty-btn" style="width:30px;height:30px;font-size:16px" onclick="ajustarCarrinho(${idx}, 1)">+</button>
+        <button class="btn btn-icon btn-danger" onclick="removerDoCarrinho(${idx})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
+        </button>
+      </div>
+    </div>`).join('');
+
+  atualizarTotalPdv();
+}
+
+function ajustarCarrinho(idx, delta) {
+  carrinho[idx].qtd = Math.max(1, carrinho[idx].qtd + delta);
+  renderCarrinho();
+}
+
+function removerDoCarrinho(idx) {
+  carrinho.splice(idx, 1);
+  renderCarrinho();
+}
+
+function adicionarAoCarrinho(produto) {
+  const existing = carrinho.find(i => i.produto_id === produto.produto_id);
+  if (existing) {
+    existing.qtd++;
+  } else {
+    carrinho.push({
+      produto_id: produto.produto_id,
+      nome:       produto.produto?.nome || produto.nome,
+      preco_unit: parseFloat(produto.preco_venda),
+      qtd:        1
+    });
+  }
+  fecharModal('modal-pdv-produto');
+  renderCarrinho();
+  toast(produto.produto?.nome || produto.nome + ' adicionado!', 'success');
+}
+
+function atualizarTotalPdv() {
+  const subtotal = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
+  const desconto = parseFloat(document.getElementById('pdv-desconto').value) || 0;
+  const total    = Math.max(0, subtotal - desconto);
+
+  document.getElementById('pdv-subtotal').textContent = 'R$ ' + subtotal.toFixed(2);
+  document.getElementById('pdv-total').textContent    = 'R$ ' + total.toFixed(2);
+
+  calcularTroco();
+  verificarConfirmar();
+}
+
+// ── PAGAMENTO ──
+function selecionarPagamento(forma) {
+  pagamentoSelecionado = forma;
+  document.querySelectorAll('.pdv-pag-btn').forEach(b => b.classList.remove('selected'));
+  document.getElementById('pag-' + forma).classList.add('selected');
+
+  const trocoWrap = document.getElementById('pdv-troco-wrap');
+  trocoWrap.style.display = forma === 'dinheiro' ? 'block' : 'none';
+  if (forma !== 'dinheiro') {
+    document.getElementById('pdv-recebido').value = '';
+    document.getElementById('pdv-troco-val').textContent = 'R$ 0,00';
+  }
+  verificarConfirmar();
+}
+
+function calcularTroco() {
+  if (pagamentoSelecionado !== 'dinheiro') return;
+  const desconto  = parseFloat(document.getElementById('pdv-desconto').value) || 0;
+  const subtotal  = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
+  const total     = Math.max(0, subtotal - desconto);
+  const recebido  = parseFloat(document.getElementById('pdv-recebido').value) || 0;
+  const troco     = recebido - total;
+  document.getElementById('pdv-troco-val').textContent =
+    troco >= 0 ? 'R$ ' + troco.toFixed(2) : 'Valor insuficiente';
+  document.getElementById('pdv-troco-val').style.color =
+    troco >= 0 ? 'var(--verde)' : 'var(--vermelho)';
+  verificarConfirmar();
+}
+
+function verificarConfirmar() {
+  const btn = document.getElementById('btn-confirmar-venda');
+  if (!btn) return;
+  const temItens    = carrinho.length > 0;
+  const temPagamento = !!pagamentoSelecionado;
+  const desconto    = parseFloat(document.getElementById('pdv-desconto').value) || 0;
+  const subtotal    = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
+  const total       = Math.max(0, subtotal - desconto);
+  const trocoOk     = pagamentoSelecionado !== 'dinheiro' ||
+    (parseFloat(document.getElementById('pdv-recebido').value) || 0) >= total;
+  btn.disabled = !(temItens && temPagamento && trocoOk);
+}
+
+// ── CONFIRMAR VENDA ──
+async function confirmarVenda() {
+  if (!carrinho.length || !pagamentoSelecionado) return;
+
+  const desconto       = parseFloat(document.getElementById('pdv-desconto').value) || 0;
+  const subtotal       = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
+  const total          = Math.max(0, subtotal - desconto);
+  const valor_recebido = pagamentoSelecionado === 'dinheiro'
+    ? parseFloat(document.getElementById('pdv-recebido').value) || 0
+    : null;
+
+  const itens = carrinho.map(i => ({
+    produto_id: i.produto_id,
+    nome:       i.nome,
+    qtd:        i.qtd,
+    preco_unit: i.preco_unit,
+    subtotal:   i.qtd * i.preco_unit
+  }));
+
+  mostrarLoading('Registrando venda...');
+  try {
+    await api('registrarVenda', {
+      eventoId:        eventoAtivo.id,
+      itens,
+      subtotal,
+      desconto,
+      total,
+      forma_pagamento: pagamentoSelecionado,
+      valor_recebido
+    });
+    toast('Venda registrada!', 'success');
+    // Limpa carrinho
+    carrinho = [];
+    pagamentoSelecionado = null;
+    document.getElementById('pdv-desconto').value = '0';
+    document.getElementById('pdv-recebido').value = '';
+    document.getElementById('pdv-troco-val').textContent = 'R$ 0,00';
+    document.getElementById('pdv-troco-wrap').style.display = 'none';
+    document.getElementById('btn-confirmar-venda').disabled = true;
+    document.querySelectorAll('.pdv-pag-btn').forEach(b => b.classList.remove('selected'));
+    renderCarrinho();
+    await carregarVendas();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    esconderLoading();
+  }
+}
+
+// ── HISTÓRICO DE VENDAS ──
+async function carregarVendas() {
+  const el = document.getElementById('pdv-historico');
+  if (!el || !eventoAtivo) return;
+  try {
+    const d = await api('getVendas', { eventoId: eventoAtivo.id });
+    const vendas = d.vendas || [];
+    if (!vendas.length) {
+      el.innerHTML = emptyState('Nenhuma venda registrada');
+      return;
+    }
+    const icones = { dinheiro: '💵', pix: '📱', credito: '💳', debito: '💳' };
+    el.innerHTML = vendas.map(v => {
+      const cancelada = v.status === 'cancelada';
+      return `<div class="card" style="opacity:${cancelada ? '.5' : '1'}">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div>
+            <span style="font-size:12px;font-weight:600;color:var(--text-3)">${icones[v.forma_pagamento] || ''} ${v.forma_pagamento}</span>
+            ${cancelada ? `<span class="badge" style="background:var(--rosa-light);color:var(--vermelho);border-color:var(--rosa-border);margin-left:6px;font-size:10px">Cancelada</span>` : ''}
+          </div>
+          <span style="font-size:15px;font-weight:800;color:${cancelada ? 'var(--text-4)' : 'var(--rosa)'}">R$ ${parseFloat(v.total).toFixed(2)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--text-4);margin-bottom:6px">
+          por <strong>${esc(v.vendedor)}</strong> · ${new Date(v.criado_em).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-bottom:${!cancelada ? '10px' : '0'}">
+          ${v.itens.map(i => `${i.qtd}x ${esc(i.nome)}`).join(' · ')}
+        </div>
+        ${!cancelada ? `
+        <button class="btn btn-danger btn-sm" onclick="cancelarVenda('${v.id}')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          Cancelar venda
+        </button>` : ''}
+      </div>`;
+    }).join('');
+  } catch (e) {
+    toast(e.message, 'error');
+  }
+}
+
+async function cancelarVenda(vendaId) {
+  if (!confirm('Cancelar esta venda?')) return;
+  mostrarLoading('Cancelando...');
+  try {
+    await api('cancelarVenda', { vendaId });
+    toast('Venda cancelada', 'info');
+    await carregarVendas();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    esconderLoading();
+  }
+}
+
+// ── MODAL ADICIONAR PRODUTO PDV ──
+function abrirModalPdvProduto() {
+  document.getElementById('pdv-busca').value = '';
+  renderPdvLista();
+  abrirModal('modal-pdv-produto');
+  setTimeout(() => document.getElementById('pdv-busca').focus(), 300);
+}
+
+function renderPdvLista() {
+  const busca = (document.getElementById('pdv-busca')?.value || '').toLowerCase();
+  const el    = document.getElementById('pdv-lista-produtos');
+  const lista = produtos.filter(p =>
+    !busca ||
+    (p.produto?.nome   || '').toLowerCase().includes(busca) ||
+    (p.produto?.codigo || '').toLowerCase().includes(busca)
+  );
+  if (!lista.length) { el.innerHTML = emptyState('Nenhum produto encontrado'); return; }
+  el.innerHTML = lista.map(p => `
+    <div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer"
+         onclick='adicionarAoCarrinho(${JSON.stringify(p)})'>
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">${esc(p.produto?.nome || '')}</div>
+        <div style="font-size:11px;color:var(--text-4);font-family:monospace">${esc(p.produto?.codigo || 'sem código')}</div>
+      </div>
+      <div style="text-align:right;flex-shrink:0">
+        <div style="font-size:14px;font-weight:700;color:var(--rosa)">R$ ${parseFloat(p.preco_venda).toFixed(2)}</div>
+        <div style="font-size:10px;color:var(--text-4)">Estoque: ${p.qtd_entrada}</div>
+      </div>
+    </div>`).join('');
+}
+
+function toggleScannerPdv() {
+  if (scannerPdvAtivo) {
+    stopScanner();
+    document.getElementById('pdv-scanner-idle').style.display    = 'flex';
+    document.getElementById('pdv-scanner-overlay').style.display = 'none';
+    document.getElementById('btn-scanner-pdv-label').textContent = 'Escanear Código';
+    scannerPdvAtivo = false;
+  } else {
+    document.getElementById('pdv-scanner-idle').style.display    = 'none';
+    document.getElementById('pdv-scanner-overlay').style.display = 'flex';
+    document.getElementById('btn-scanner-pdv-label').textContent = 'Parar câmera';
+    scannerPdvAtivo = true;
+    startScanner('video-pdv', (codigo) => {
+      scannerPdvAtivo = false;
+      document.getElementById('pdv-scanner-idle').style.display    = 'flex';
+      document.getElementById('pdv-scanner-overlay').style.display = 'none';
+      document.getElementById('btn-scanner-pdv-label').textContent = 'Escanear Código';
+      const prod = produtos.find(p => p.produto?.codigo === codigo);
+      if (prod) {
+        adicionarAoCarrinho(prod);
+      } else {
+        toast('Produto não encontrado neste evento', 'error');
+      }
+    });
   }
 }
 
