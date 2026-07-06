@@ -64,10 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
   if (sessao) {
     sincronizarEventoEmAndamento()
       .then(() => mostrarHome())
-      .catch(() => {
-        showPage('page-home');
-        esconderLoading();
-      });
+      .catch(() => mostrarHome());
   } else {
     showPage('page-login');
     esconderLoading();
@@ -115,10 +112,7 @@ async function sincronizarEventoEmAndamento() {
       localStorage.setItem('haru_evento', JSON.stringify(eventoAtivo));
     }
   } catch (e) {
-    // Silencioso — usa evento salvo localmente
     console.warn('Sync evento falhou, usando cache local');
-  } finally {
-    esconderLoading();
   }
 }
 
