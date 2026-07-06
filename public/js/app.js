@@ -1,4 +1,3 @@
-// v2 - 2026-07-06
 // ═══════════════════════════════════════════
 //  Eventos Haru — app.js
 // ═══════════════════════════════════════════
@@ -54,11 +53,6 @@ document.addEventListener('DOMContentLoaded', () => {
     esconderLoading();
   }
 });
-  } else {
-    showPage('page-login');
-    esconderLoading();
-  }
-});
 
 // ═══════════════════════════════════════════
 //  API
@@ -102,6 +96,7 @@ async function sincronizarEventoEmAndamento() {
     }
   } catch (e) {
     console.warn('Sync evento falhou, usando cache local');
+  }
 }
 
 async function definirEventoEmAndamento(eventoId) {
