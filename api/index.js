@@ -68,8 +68,8 @@ module.exports = async function handler(req, res) {
   const body = req.body || {};
   const { action, username } = body;
 
-  // Valida usuário em todas as ações exceto login
-  if (action !== 'login') {
+  // Valida usuário em todas as ações exceto login e getEventoEmAndamento
+  if (action !== 'login' && action !== 'getEventoEmAndamento') {
     const user = await getUsuario(username);
     if (!user) return err(res, 'Sessão inválida', 401);
     body._user = user; // injeta dados do usuário no body
