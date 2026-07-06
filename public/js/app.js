@@ -5,7 +5,21 @@
 const API = '/api';
 
 // ── ESTADO GLOBAL ──
-let sessao      = JSON.parse(sessionStorage.getItem('haru_sessao') || 'null');
+// Lê sessão do localStorage com verificação de validade
+function lerSessao() {
+  try {
+    const raw = localStorage.getItem('haru_sessao');
+    if (!raw) return null;
+    const obj = JSON.parse(raw);
+    // Verifica se expirou (7 dias)
+    if (!obj.expira || Date.now() > obj.expira) {
+      localStorage.removeItem('haru_sessao');
+      return null;
+    }
+    return obj.dados;
+  } catch(e) { return null; }
+}
+let sessao = lerSessao();
 let eventoAtivo = JSON.parse(localStorage.getItem('haru_evento')   || 'null');
 let produtos    = [];
 let catalogo    = [];
@@ -147,6 +161,15 @@ function goApp(tela) {
   if (tela === 'pesquisa')  iniciarPesquisa();
   if (tela === 'pdv') {
     showPage('page-pdv');
+    // Carrega produtos se ainda não foram carregados
+    if (!produtos.length) {
+      mostrarLoading('Carregando produtos...');
+      try {
+        const d = await api('getProdutosEvento', { eventoId: eventoAtivo.id });
+        produtos = d.produtos || [];
+      } catch(e) {}
+      esconderLoading();
+    }
     iniciarPdv();
   }
 }
@@ -176,7 +199,11 @@ async function doLogin() {
   try {
     const data = await api('login', { username: usuario, senha });
     sessao = { username: data.username, nome: data.nome, perfil: data.perfil, ver_relatorio: data.ver_relatorio };
-    sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
+    // Salva com validade de 7 dias
+    localStorage.setItem('haru_sessao', JSON.stringify({
+      dados: sessao,
+      expira: Date.now() + 7 * 24 * 60 * 60 * 1000
+    }));
     mostrarHome();
   } catch (e) {
     esconderLoading();
@@ -189,7 +216,7 @@ async function doLogin() {
 
 function doLogout() {
   sessao = null; eventoAtivo = null; produtos = []; catalogo = [];
-  sessionStorage.removeItem('haru_sessao');
+  localStorage.removeItem('haru_sessao');
   localStorage.removeItem('haru_evento');
   fecharModal('modal-usuario');
   showPage('page-login');
