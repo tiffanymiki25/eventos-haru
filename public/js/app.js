@@ -48,8 +48,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   // Garante que loading some em qualquer cenário
   try {
-    if (sessao) {
-      mostrarHome();
+    iniciarMonitorOffline();
+  if (sessao) {
+    mostrarHome();
     } else {
       showPage('page-login');
       esconderLoading();
@@ -155,14 +156,17 @@ async function goApp(tela) {
   if (tela === 'pesquisa')  iniciarPesquisa();
   if (tela === 'pdv') {
     showPage('page-pdv');
-    // Carrega produtos se ainda não foram carregados
     if (!produtos.length) {
       mostrarLoading('Carregando produtos...');
       try {
         const d = await api('getProdutosEvento', { eventoId: eventoAtivo.id });
         produtos = d.produtos || [];
-      } catch(e) {}
-      esconderLoading();
+        await salvarCacheLocal(eventoAtivo.id, produtos);
+      } catch(e) {
+        // tenta cache offline
+        const cache = await getCacheLocal(eventoAtivo.id).catch(() => null);
+        if (cache) { produtos = cache; toast('Usando dados offline', 'info'); }
+      } finally { esconderLoading(); }
     }
     iniciarPdv();
   }
@@ -548,9 +552,8 @@ async function salvarEntrada() {
       await api('adicionarEntrada', { eventoId: eventoAtivo.id, produtoId, qtd_entrada: qtd, preco_venda: precoVenda });
     }
 
-    fecharModalEntrada();
-    toast('Produto salvo!', 'success');
-    await carregarEntrada();
+    await aplicarFavoritoSeNecessario(pid);
+    fecharModalEntrada(); toast('Produto salvo!', 'success'); await carregarEntrada();
   } catch (e) {
     toast(e.message, 'error');
   } finally {
@@ -1215,77 +1218,186 @@ async function importarCSV() {
 }
 
 // ═══════════════════════════════════════════
-//  PDV
+//  PDV — OFFLINE + REDESIGN
 // ═══════════════════════════════════════════
-let carrinho = [];
+
+// ── OFFLINE / INDEXEDDB ──
+const DB_NAME    = 'haruDB';
+const DB_VERSION = 1;
+let   db         = null;
+
+function abrirDB() {
+  return new Promise((resolve, reject) => {
+    if (db) { resolve(db); return; }
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = e => {
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('vendas_pendentes')) {
+        d.createObjectStore('vendas_pendentes', { keyPath: 'id', autoIncrement: true });
+      }
+      if (!d.objectStoreNames.contains('produtos_cache')) {
+        d.createObjectStore('produtos_cache', { keyPath: 'evento_id' });
+      }
+    };
+    req.onsuccess = e => { db = e.target.result; resolve(db); };
+    req.onerror   = e => reject(e);
+  });
+}
+
+async function salvarVendaPendente(venda) {
+  const d = await abrirDB();
+  return new Promise((resolve, reject) => {
+    const tx    = d.transaction('vendas_pendentes', 'readwrite');
+    const store = tx.objectStore('vendas_pendentes');
+    const req   = store.add({ ...venda, _pendente: true, _ts: Date.now() });
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = e => reject(e);
+  });
+}
+
+async function getVendasPendentes() {
+  const d = await abrirDB();
+  return new Promise((resolve, reject) => {
+    const tx    = d.transaction('vendas_pendentes', 'readonly');
+    const store = tx.objectStore('vendas_pendentes');
+    const req   = store.getAll();
+    req.onsuccess = () => resolve(req.result);
+    req.onerror   = e => reject(e);
+  });
+}
+
+async function deletarVendaPendente(id) {
+  const d = await abrirDB();
+  return new Promise((resolve, reject) => {
+    const tx    = d.transaction('vendas_pendentes', 'readwrite');
+    const store = tx.objectStore('vendas_pendentes');
+    const req   = store.delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror   = e => reject(e);
+  });
+}
+
+async function salvarCacheLocal(eventoId, prods) {
+  const d = await abrirDB();
+  return new Promise((resolve) => {
+    const tx    = d.transaction('produtos_cache', 'readwrite');
+    const store = tx.objectStore('produtos_cache');
+    store.put({ evento_id: eventoId, produtos: prods, ts: Date.now() });
+    tx.oncomplete = () => resolve();
+  });
+}
+
+async function getCacheLocal(eventoId) {
+  const d = await abrirDB();
+  return new Promise((resolve) => {
+    const tx    = d.transaction('produtos_cache', 'readonly');
+    const store = tx.objectStore('produtos_cache');
+    const req   = store.get(eventoId);
+    req.onsuccess = () => resolve(req.result?.produtos || null);
+    req.onerror   = () => resolve(null);
+  });
+}
+
+// ── DETECÇÃO OFFLINE ──
+let isOnline = navigator.onLine;
+
+function iniciarMonitorOffline() {
+  window.addEventListener('online',  () => { isOnline = true;  atualizarBadgeOffline(); sincronizarPendentes(); });
+  window.addEventListener('offline', () => { isOnline = false; atualizarBadgeOffline(); });
+  atualizarBadgeOffline();
+}
+
+function atualizarBadgeOffline() {
+  const badge = document.getElementById('offline-badge');
+  if (badge) badge.classList.toggle('show', !isOnline);
+}
+
+async function atualizarBadgePendentes() {
+  try {
+    const pendentes = await getVendasPendentes();
+    const count     = pendentes.length;
+    const badge     = document.getElementById('pdv-sync-badge');
+    const countEl   = document.getElementById('pdv-pendentes-count');
+    if (badge)   badge.classList.toggle('show', count > 0);
+    if (countEl) countEl.textContent = count;
+  } catch(e) {}
+}
+
+async function sincronizarPendentes() {
+  if (!isOnline) return;
+  try {
+    const pendentes = await getVendasPendentes();
+    if (!pendentes.length) return;
+    for (const v of pendentes) {
+      try {
+        const { id: localId, _pendente, _ts, ...venda } = v;
+        await api('registrarVenda', venda);
+        await deletarVendaPendente(localId);
+      } catch(e) { console.warn('Erro ao sincronizar venda:', e); }
+    }
+    await atualizarBadgePendentes();
+    toast('Vendas sincronizadas!', 'success');
+    await carregarVendas();
+  } catch(e) {}
+}
+
+// ── PDV STATE ──
+let carrinho           = [];
 let pagamentoSelecionado = null;
-let scannerPdvAtivo = false;
+let scannerSorvAtivo   = false;
+let pdvTelaAnterior    = 'home';
+
+// ── NAVEGAÇÃO PDV ──
+function goSubPdv(sub) {
+  stopScanner();
+  const pages = ['page-pdv','page-pdv-venda','page-pdv-rapido',
+                 'page-pdv-sorvetes','page-pdv-historico','page-pdv-carrinho'];
+  pages.forEach(p => {
+    const el = document.getElementById(p);
+    if (el) el.classList.remove('active');
+  });
+
+  if (sub === 'home') {
+    document.getElementById('page-pdv').classList.add('active');
+    atualizarBadgePendentes();
+    return;
+  }
+  if (sub === 'nova-venda') {
+    pdvTelaAnterior = 'nova-venda';
+    document.getElementById('page-pdv-venda').classList.add('active');
+    document.getElementById('venda-busca').value = '';
+    renderGradeProdutos();
+    atualizarFab();
+    return;
+  }
+  if (sub === 'rapido') {
+    pdvTelaAnterior = 'rapido';
+    document.getElementById('page-pdv-rapido').classList.add('active');
+    renderRapido();
+    atualizarFab();
+    return;
+  }
+  if (sub === 'sorvetes') {
+    pdvTelaAnterior = 'sorvetes';
+    document.getElementById('page-pdv-sorvetes').classList.add('active');
+    renderSorvetes();
+    atualizarFab();
+    return;
+  }
+  if (sub === 'historico') {
+    document.getElementById('page-pdv-historico').classList.add('active');
+    carregarVendas();
+    return;
+  }
+}
 
 function iniciarPdv() {
   const el = document.getElementById('pdv-evento-nome');
   if (el) el.textContent = eventoAtivo?.nome || '';
-  carrinho = [];
-  pagamentoSelecionado = null;
-  document.getElementById('pdv-desconto').value  = '0';
-  document.getElementById('pdv-recebido').value  = '';
-  document.getElementById('pdv-troco-val').textContent = 'R$ 0,00';
-  document.getElementById('pdv-troco-wrap').style.display = 'none';
-  document.getElementById('btn-confirmar-venda').disabled = true;
-  // Desmarca pagamento
-  document.querySelectorAll('.pdv-pag-btn').forEach(b => b.classList.remove('selected'));
-  renderCarrinho();
-  carregarVendas();
+  atualizarBadgePendentes();
 }
 
 // ── CARRINHO ──
-function renderCarrinho() {
-  const vazio   = document.getElementById('pdv-carrinho-vazio');
-  const lista   = document.getElementById('pdv-carrinho-lista');
-  const resumo  = document.getElementById('pdv-resumo');
-  const itensEl = document.getElementById('pdv-itens');
-
-  if (!carrinho.length) {
-    vazio.style.display  = 'block';
-    lista.style.display  = 'none';
-    resumo.style.display = 'none';
-    return;
-  }
-
-  vazio.style.display  = 'none';
-  lista.style.display  = 'block';
-  resumo.style.display = 'block';
-
-  itensEl.innerHTML = carrinho.map((item, idx) => `
-    <div class="card" style="display:flex;align-items:center;gap:12px">
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(item.nome)}</div>
-        <div style="font-size:11px;color:var(--text-4);font-family:monospace;margin-top:2px">
-          ${item.qtd}x R$${parseFloat(item.preco_unit).toFixed(2)} = <strong>R$${(item.qtd * item.preco_unit).toFixed(2)}</strong>
-        </div>
-      </div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <button class="qty-btn" style="width:30px;height:30px;font-size:16px" onclick="ajustarCarrinho(${idx}, -1)">−</button>
-        <span style="font-family:monospace;font-weight:700;min-width:24px;text-align:center">${item.qtd}</span>
-        <button class="qty-btn" style="width:30px;height:30px;font-size:16px" onclick="ajustarCarrinho(${idx}, 1)">+</button>
-        <button class="btn btn-icon btn-danger" onclick="removerDoCarrinho(${idx})">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/></svg>
-        </button>
-      </div>
-    </div>`).join('');
-
-  atualizarTotalPdv();
-}
-
-function ajustarCarrinho(idx, delta) {
-  carrinho[idx].qtd = Math.max(1, carrinho[idx].qtd + delta);
-  renderCarrinho();
-}
-
-function removerDoCarrinho(idx) {
-  carrinho.splice(idx, 1);
-  renderCarrinho();
-}
-
 function adicionarAoCarrinho(produto) {
   const existing = carrinho.find(i => i.produto_id === produto.produto_id);
   if (existing) {
@@ -1293,24 +1405,106 @@ function adicionarAoCarrinho(produto) {
   } else {
     carrinho.push({
       produto_id: produto.produto_id,
-      nome:       produto.produto?.nome || produto.nome,
+      nome:       produto.produto?.nome || produto.nome || '',
       preco_unit: parseFloat(produto.preco_venda),
       qtd:        1
     });
   }
-  fecharModal('modal-pdv-produto');
-  renderCarrinho();
-  toast(produto.produto?.nome || produto.nome + ' adicionado!', 'success');
+  atualizarFab();
+  toast((produto.produto?.nome || produto.nome || '') + ' adicionado!', 'success');
+}
+
+function atualizarFab() {
+  const total = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
+  const qtd   = carrinho.reduce((s, i) => s + i.qtd, 0);
+  const show  = carrinho.length > 0;
+
+  ['venda','rapido','sorv'].forEach(prefix => {
+    const fab   = document.getElementById(prefix + '-fab');
+    const qtdEl = document.getElementById(prefix + '-fab-qtd');
+    const totEl = document.getElementById(prefix + '-fab-total');
+    if (fab)   fab.style.display   = show ? 'flex' : 'none';
+    if (qtdEl) qtdEl.textContent   = qtd;
+    if (totEl) totEl.textContent   = 'R$ ' + total.toFixed(2);
+  });
+}
+
+function abrirCarrinho() {
+  const pages = ['page-pdv-venda','page-pdv-rapido','page-pdv-sorvetes'];
+  pages.forEach(p => {
+    const el = document.getElementById(p);
+    if (el) el.classList.remove('active');
+  });
+  document.getElementById('page-pdv-carrinho').classList.add('active');
+  renderCarrinhoCompleto();
+}
+
+function voltarDaCarrinho() {
+  document.getElementById('page-pdv-carrinho').classList.remove('active');
+  goSubPdv(pdvTelaAnterior || 'nova-venda');
+}
+
+function limparCarrinho() {
+  if (!carrinho.length) return;
+  if (!confirm('Limpar o carrinho?')) return;
+  carrinho = [];
+  pagamentoSelecionado = null;
+  renderCarrinhoCompleto();
+  atualizarFab();
+}
+
+function renderCarrinhoCompleto() {
+  const el = document.getElementById('carrinho-itens');
+  if (!carrinho.length) {
+    el.innerHTML = emptyState('Carrinho vazio');
+    document.getElementById('btn-confirmar-venda').disabled = true;
+    return;
+  }
+  el.innerHTML = carrinho.map((item, idx) => `
+    <div class="card" style="display:flex;align-items:center;gap:12px">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:14px;font-weight:600">${esc(item.nome)}</div>
+        <div style="font-size:12px;color:var(--text-4);margin-top:2px">
+          ${item.qtd}x R$${item.preco_unit.toFixed(2)} =
+          <strong style="color:var(--rosa)">R$${(item.qtd * item.preco_unit).toFixed(2)}</strong>
+        </div>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+        <button class="qty-btn" style="width:30px;height:30px;font-size:16px"
+                onclick="ajustarCarrinho(${idx},-1)">−</button>
+        <span style="font-family:monospace;font-weight:700;min-width:20px;text-align:center">${item.qtd}</span>
+        <button class="qty-btn" style="width:30px;height:30px;font-size:16px"
+                onclick="ajustarCarrinho(${idx},1)">+</button>
+        <button class="btn btn-icon btn-danger" onclick="removerDoCarrinho(${idx})">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 6h18M8 6V4h8v2M19 6l-1 14H6L5 6"/>
+          </svg>
+        </button>
+      </div>
+    </div>`).join('');
+  atualizarTotalPdv();
+}
+
+function ajustarCarrinho(idx, delta) {
+  carrinho[idx].qtd = Math.max(1, carrinho[idx].qtd + delta);
+  renderCarrinhoCompleto();
+  atualizarFab();
+}
+
+function removerDoCarrinho(idx) {
+  carrinho.splice(idx, 1);
+  renderCarrinhoCompleto();
+  atualizarFab();
 }
 
 function atualizarTotalPdv() {
   const subtotal = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
-  const desconto = parseFloat(document.getElementById('pdv-desconto').value) || 0;
+  const desconto = parseFloat(document.getElementById('carr-desconto')?.value) || 0;
   const total    = Math.max(0, subtotal - desconto);
-
-  document.getElementById('pdv-subtotal').textContent = 'R$ ' + subtotal.toFixed(2);
-  document.getElementById('pdv-total').textContent    = 'R$ ' + total.toFixed(2);
-
+  const sub = document.getElementById('carr-subtotal');
+  const tot = document.getElementById('carr-total');
+  if (sub) sub.textContent = 'R$ ' + subtotal.toFixed(2);
+  if (tot) tot.textContent = 'R$ ' + total.toFixed(2);
   calcularTroco();
   verificarConfirmar();
 }
@@ -1319,28 +1513,31 @@ function atualizarTotalPdv() {
 function selecionarPagamento(forma) {
   pagamentoSelecionado = forma;
   document.querySelectorAll('.pdv-pag-btn').forEach(b => b.classList.remove('selected'));
-  document.getElementById('pag-' + forma).classList.add('selected');
-
-  const trocoWrap = document.getElementById('pdv-troco-wrap');
-  trocoWrap.style.display = forma === 'dinheiro' ? 'block' : 'none';
+  const btn = document.getElementById('pag-' + forma);
+  if (btn) btn.classList.add('selected');
+  const wrap = document.getElementById('pdv-troco-wrap');
+  if (wrap) wrap.style.display = forma === 'dinheiro' ? 'block' : 'none';
   if (forma !== 'dinheiro') {
-    document.getElementById('pdv-recebido').value = '';
-    document.getElementById('pdv-troco-val').textContent = 'R$ 0,00';
+    const rec = document.getElementById('pdv-recebido');
+    const trv = document.getElementById('pdv-troco-val');
+    if (rec) rec.value = '';
+    if (trv) trv.textContent = 'R$ 0,00';
   }
   verificarConfirmar();
 }
 
 function calcularTroco() {
   if (pagamentoSelecionado !== 'dinheiro') return;
-  const desconto  = parseFloat(document.getElementById('pdv-desconto').value) || 0;
-  const subtotal  = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
-  const total     = Math.max(0, subtotal - desconto);
-  const recebido  = parseFloat(document.getElementById('pdv-recebido').value) || 0;
-  const troco     = recebido - total;
-  document.getElementById('pdv-troco-val').textContent =
-    troco >= 0 ? 'R$ ' + troco.toFixed(2) : 'Valor insuficiente';
-  document.getElementById('pdv-troco-val').style.color =
-    troco >= 0 ? 'var(--verde)' : 'var(--vermelho)';
+  const desconto = parseFloat(document.getElementById('carr-desconto')?.value) || 0;
+  const subtotal = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
+  const total    = Math.max(0, subtotal - desconto);
+  const recebido = parseFloat(document.getElementById('pdv-recebido')?.value) || 0;
+  const troco    = recebido - total;
+  const el       = document.getElementById('pdv-troco-val');
+  if (el) {
+    el.textContent   = troco >= 0 ? 'R$ ' + troco.toFixed(2) : 'Valor insuficiente';
+    el.style.color   = troco >= 0 ? 'var(--verde)' : 'var(--vermelho)';
+  }
   verificarConfirmar();
 }
 
@@ -1348,57 +1545,56 @@ function verificarConfirmar() {
   const btn = document.getElementById('btn-confirmar-venda');
   if (!btn) return;
   const temItens    = carrinho.length > 0;
-  const temPagamento = !!pagamentoSelecionado;
-  const desconto    = parseFloat(document.getElementById('pdv-desconto').value) || 0;
+  const temPag      = !!pagamentoSelecionado;
+  const desconto    = parseFloat(document.getElementById('carr-desconto')?.value) || 0;
   const subtotal    = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
   const total       = Math.max(0, subtotal - desconto);
   const trocoOk     = pagamentoSelecionado !== 'dinheiro' ||
-    (parseFloat(document.getElementById('pdv-recebido').value) || 0) >= total;
-  btn.disabled = !(temItens && temPagamento && trocoOk);
+    (parseFloat(document.getElementById('pdv-recebido')?.value) || 0) >= total;
+  btn.disabled = !(temItens && temPag && trocoOk);
 }
 
 // ── CONFIRMAR VENDA ──
 async function confirmarVenda() {
   if (!carrinho.length || !pagamentoSelecionado) return;
-
-  const desconto       = parseFloat(document.getElementById('pdv-desconto').value) || 0;
+  const desconto       = parseFloat(document.getElementById('carr-desconto')?.value) || 0;
   const subtotal       = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
   const total          = Math.max(0, subtotal - desconto);
   const valor_recebido = pagamentoSelecionado === 'dinheiro'
-    ? parseFloat(document.getElementById('pdv-recebido').value) || 0
-    : null;
-
+    ? parseFloat(document.getElementById('pdv-recebido')?.value) || 0 : null;
   const itens = carrinho.map(i => ({
-    produto_id: i.produto_id,
-    nome:       i.nome,
-    qtd:        i.qtd,
-    preco_unit: i.preco_unit,
-    subtotal:   i.qtd * i.preco_unit
+    produto_id: i.produto_id, nome: i.nome,
+    qtd: i.qtd, preco_unit: i.preco_unit, subtotal: i.qtd * i.preco_unit
   }));
+  const venda = {
+    eventoId: eventoAtivo.id, itens, subtotal, desconto, total,
+    forma_pagamento: pagamentoSelecionado, valor_recebido
+  };
 
   mostrarLoading('Registrando venda...');
   try {
-    await api('registrarVenda', {
-      eventoId:        eventoAtivo.id,
-      itens,
-      subtotal,
-      desconto,
-      total,
-      forma_pagamento: pagamentoSelecionado,
-      valor_recebido
-    });
-    toast('Venda registrada!', 'success');
-    // Limpa carrinho
-    carrinho = [];
-    pagamentoSelecionado = null;
-    document.getElementById('pdv-desconto').value = '0';
-    document.getElementById('pdv-recebido').value = '';
-    document.getElementById('pdv-troco-val').textContent = 'R$ 0,00';
-    document.getElementById('pdv-troco-wrap').style.display = 'none';
-    document.getElementById('btn-confirmar-venda').disabled = true;
+    if (isOnline) {
+      await api('registrarVenda', venda);
+    } else {
+      await salvarVendaPendente(venda);
+      await atualizarBadgePendentes();
+      toast('Venda salva offline — será sincronizada quando houver conexão', 'info');
+    }
+    if (isOnline) toast('Venda registrada!', 'success');
+
+    // Reset
+    carrinho = []; pagamentoSelecionado = null;
+    const desc = document.getElementById('carr-desconto');
+    const rec  = document.getElementById('pdv-recebido');
+    const trv  = document.getElementById('pdv-troco-val');
+    const wrap = document.getElementById('pdv-troco-wrap');
+    if (desc) desc.value = '0';
+    if (rec)  rec.value  = '';
+    if (trv)  trv.textContent = 'R$ 0,00';
+    if (wrap) wrap.style.display = 'none';
     document.querySelectorAll('.pdv-pag-btn').forEach(b => b.classList.remove('selected'));
-    renderCarrinho();
-    await carregarVendas();
+    atualizarFab();
+    goSubPdv('home');
   } catch (e) {
     toast(e.message, 'error');
   } finally {
@@ -1406,43 +1602,131 @@ async function confirmarVenda() {
   }
 }
 
+// ── GRADE DE PRODUTOS (Nova Venda) ──
+function renderGradeProdutos() {
+  const el    = document.getElementById('venda-grade');
+  const busca = (document.getElementById('venda-busca')?.value || '').toLowerCase();
+  const lista = produtos.filter(p =>
+    !busca ||
+    (p.produto?.nome   || '').toLowerCase().includes(busca) ||
+    (p.produto?.codigo || '').toLowerCase().includes(busca)
+  );
+  if (!lista.length) { el.innerHTML = emptyState('Nenhum produto'); return; }
+  el.innerHTML = lista.map(p => `
+    <div class="pdv-grade-item" onclick='adicionarAoCarrinho(${JSON.stringify(p)})'>
+      <div class="pgi-nome">${esc(p.produto?.nome || '')}</div>
+      ${p.produto?.codigo ? `<div class="pgi-codigo">${esc(p.produto.codigo)}</div>` : ''}
+      <div class="pgi-preco">R$ ${parseFloat(p.preco_venda).toFixed(2)}</div>
+      <div class="pgi-estoque">Estoque: ${p.qtd_entrada}</div>
+    </div>`).join('');
+}
+
+// ── ACESSO RÁPIDO ──
+function renderRapido() {
+  const el    = document.getElementById('rapido-grade');
+  const lista = produtos.filter(p =>
+    p.produto?.favorito === true || !p.produto?.codigo
+  );
+  if (!lista.length) {
+    el.innerHTML = `<div style="grid-column:1/-1">${emptyState('Nenhum favorito cadastrado.<br>Marque produtos como favorito na tela de Entrada.')}</div>`;
+    return;
+  }
+  el.innerHTML = lista.map(p => `
+    <div class="pdv-rapido-item" onclick='adicionarAoCarrinho(${JSON.stringify(p)})'>
+      <div class="pri-icon">${p.produto?.categoria?.toLowerCase().includes('sorvete') ? '🍨' : '🛒'}</div>
+      <div class="pri-nome">${esc(p.produto?.nome || '')}</div>
+      <div class="pri-preco">R$ ${parseFloat(p.preco_venda).toFixed(2)}</div>
+    </div>`).join('');
+}
+
+// ── SORVETES ──
+function renderSorvetes() {
+  const el   = document.getElementById('sorvetes-conteudo');
+  const list = produtos.filter(p =>
+    (p.produto?.categoria || '').toLowerCase().includes('sorvete')
+  );
+  if (!list.length) {
+    el.innerHTML = emptyState('Nenhum produto com categoria "sorvete" cadastrado.');
+    return;
+  }
+  // Agrupa por categoria
+  const grupos = {};
+  list.forEach(p => {
+    const cat = p.produto?.categoria || 'Sorvetes';
+    if (!grupos[cat]) grupos[cat] = [];
+    grupos[cat].push(p);
+  });
+
+  el.innerHTML = Object.entries(grupos).map(([cat, items]) => `
+    <div class="sorvete-categoria">
+      <div class="sorvete-categoria-titulo">${esc(cat)}</div>
+      <div class="pdv-grade">
+        ${items.map(p => `
+          <div class="pdv-grade-item" onclick='adicionarAoCarrinho(${JSON.stringify(p)})'>
+            <div class="pgi-nome">${esc(p.produto?.nome || '')}</div>
+            <div class="pgi-preco">R$ ${parseFloat(p.preco_venda).toFixed(2)}</div>
+            <div class="pgi-estoque">Estoque: ${p.qtd_entrada}</div>
+          </div>`).join('')}
+      </div>
+    </div>`).join('');
+}
+
 // ── HISTÓRICO DE VENDAS ──
 async function carregarVendas() {
   const el = document.getElementById('pdv-historico');
   if (!el || !eventoAtivo) return;
+
+  // Mostra pendentes offline primeiro
+  const pendentes = await getVendasPendentes().catch(() => []);
+  let html = '';
+
+  if (pendentes.length) {
+    html += `<div style="background:var(--laranja-light);border:1px solid var(--laranja-border);border-radius:var(--radius);padding:12px;margin-bottom:10px;font-size:13px;color:var(--laranja)">
+      ⚠️ ${pendentes.length} venda(s) pendente(s) de sincronização
+      ${isOnline ? '<button class="btn btn-secondary btn-sm" style="margin-top:8px" onclick="sincronizarPendentes()">Sincronizar agora</button>' : ''}
+    </div>`;
+  }
+
+  if (!isOnline) {
+    el.innerHTML = html + emptyState('Sem conexão — histórico indisponível offline');
+    return;
+  }
+
   try {
     const d = await api('getVendas', { eventoId: eventoAtivo.id });
     const vendas = d.vendas || [];
-    if (!vendas.length) {
+    if (!vendas.length && !pendentes.length) {
       el.innerHTML = emptyState('Nenhuma venda registrada');
       return;
     }
-    const icones = { dinheiro: '💵', pix: '📱', credito: '💳', debito: '💳' };
-    el.innerHTML = vendas.map(v => {
+    const icones = { dinheiro:'💵', pix:'📱', credito:'💳', debito:'💳' };
+    html += vendas.map(v => {
       const cancelada = v.status === 'cancelada';
       return `<div class="card" style="opacity:${cancelada ? '.5' : '1'}">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+          <div style="display:flex;align-items:center;gap:6px">
             <span style="font-size:12px;font-weight:600;color:var(--text-3)">${icones[v.forma_pagamento] || ''} ${v.forma_pagamento}</span>
-            ${cancelada ? `<span class="badge" style="background:var(--rosa-light);color:var(--vermelho);border-color:var(--rosa-border);margin-left:6px;font-size:10px">Cancelada</span>` : ''}
+            ${cancelada ? `<span class="badge" style="background:var(--rosa-light);color:var(--vermelho);border-color:var(--rosa-border);font-size:10px">Cancelada</span>` : ''}
           </div>
           <span style="font-size:15px;font-weight:800;color:${cancelada ? 'var(--text-4)' : 'var(--rosa)'}">R$ ${parseFloat(v.total).toFixed(2)}</span>
         </div>
         <div style="font-size:11px;color:var(--text-4);margin-bottom:6px">
-          por <strong>${esc(v.vendedor)}</strong> · ${new Date(v.criado_em).toLocaleTimeString('pt-BR', {hour:'2-digit',minute:'2-digit'})}
+          por <strong>${esc(v.vendedor)}</strong> ·
+          ${new Date(v.criado_em).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}
         </div>
         <div style="font-size:11px;color:var(--text-3);margin-bottom:${!cancelada ? '10px' : '0'}">
           ${v.itens.map(i => `${i.qtd}x ${esc(i.nome)}`).join(' · ')}
         </div>
         ${!cancelada ? `
         <button class="btn btn-danger btn-sm" onclick="cancelarVenda('${v.id}')">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:14px"><path d="M18 6L6 18M6 6l12 12"/></svg>
           Cancelar venda
         </button>` : ''}
       </div>`;
     }).join('');
+    el.innerHTML = html;
   } catch (e) {
-    toast(e.message, 'error');
+    el.innerHTML = html + emptyState('Erro ao carregar vendas');
   }
 }
 
@@ -1460,62 +1744,49 @@ async function cancelarVenda(vendaId) {
   }
 }
 
-// ── MODAL ADICIONAR PRODUTO PDV ──
-function abrirModalPdvProduto() {
-  document.getElementById('pdv-busca').value = '';
-  renderPdvLista();
-  abrirModal('modal-pdv-produto');
-  setTimeout(() => document.getElementById('pdv-busca').focus(), 300);
-}
-
-function renderPdvLista() {
-  const busca = (document.getElementById('pdv-busca')?.value || '').toLowerCase();
-  const el    = document.getElementById('pdv-lista-produtos');
-  const lista = produtos.filter(p =>
-    !busca ||
-    (p.produto?.nome   || '').toLowerCase().includes(busca) ||
-    (p.produto?.codigo || '').toLowerCase().includes(busca)
-  );
-  if (!lista.length) { el.innerHTML = emptyState('Nenhum produto encontrado'); return; }
-  el.innerHTML = lista.map(p => `
-    <div class="card" style="display:flex;align-items:center;gap:12px;cursor:pointer"
-         onclick='adicionarAoCarrinho(${JSON.stringify(p)})'>
-      <div style="flex:1;min-width:0">
-        <div style="font-size:14px;font-weight:600">${esc(p.produto?.nome || '')}</div>
-        <div style="font-size:11px;color:var(--text-4);font-family:monospace">${esc(p.produto?.codigo || 'sem código')}</div>
-      </div>
-      <div style="text-align:right;flex-shrink:0">
-        <div style="font-size:14px;font-weight:700;color:var(--rosa)">R$ ${parseFloat(p.preco_venda).toFixed(2)}</div>
-        <div style="font-size:10px;color:var(--text-4)">Estoque: ${p.qtd_entrada}</div>
-      </div>
-    </div>`).join('');
-}
-
-function toggleScannerPdv() {
-  if (scannerPdvAtivo) {
+// ── SCANNER SORVETES ──
+let scannerSorvetes = false;
+function toggleScannerSorvetes() {
+  if (scannerSorvetes) {
     stopScanner();
-    document.getElementById('pdv-scanner-idle').style.display    = 'flex';
-    document.getElementById('pdv-scanner-overlay').style.display = 'none';
-    document.getElementById('btn-scanner-pdv-label').textContent = 'Escanear Código';
-    scannerPdvAtivo = false;
+    scannerSorvetes = false;
+    document.getElementById('sorv-scanner-wrap').style.display  = 'none';
+    document.getElementById('btn-scanner-sorv-label').textContent = 'Escanear outro produto';
   } else {
-    document.getElementById('pdv-scanner-idle').style.display    = 'none';
-    document.getElementById('pdv-scanner-overlay').style.display = 'flex';
-    document.getElementById('btn-scanner-pdv-label').textContent = 'Parar câmera';
-    scannerPdvAtivo = true;
-    startScanner('video-pdv', (codigo) => {
-      scannerPdvAtivo = false;
-      document.getElementById('pdv-scanner-idle').style.display    = 'flex';
-      document.getElementById('pdv-scanner-overlay').style.display = 'none';
-      document.getElementById('btn-scanner-pdv-label').textContent = 'Escanear Código';
+    scannerSorvetes = true;
+    document.getElementById('sorv-scanner-wrap').style.display = 'block';
+    document.getElementById('sorv-scanner-idle').style.display = 'flex';
+    document.getElementById('sorv-scanner-overlay').style.display = 'none';
+    document.getElementById('btn-scanner-sorv-label').textContent = 'Parar câmera';
+    startScanner('video-sorvetes', (codigo) => {
+      scannerSorvetes = false;
+      document.getElementById('sorv-scanner-wrap').style.display  = 'none';
+      document.getElementById('btn-scanner-sorv-label').textContent = 'Escanear outro produto';
       const prod = produtos.find(p => p.produto?.codigo === codigo);
-      if (prod) {
-        adicionarAoCarrinho(prod);
-      } else {
-        toast('Produto não encontrado neste evento', 'error');
-      }
+      if (prod) adicionarAoCarrinho(prod);
+      else toast('Produto não encontrado', 'error');
     });
   }
+}
+
+// ── FAVORITO NA ENTRADA ──
+let entradaFavorito = false;
+
+function toggleEntradaFavorito() {
+  entradaFavorito = !entradaFavorito;
+  const btn = document.getElementById('btn-entrada-favorito');
+  if (btn) btn.textContent = entradaFavorito ? '⭐' : '☆';
+}
+
+// Salva favorito ao salvar entrada (chamar após salvarEntrada ter sucesso)
+async function aplicarFavoritoSeNecessario(produtoId) {
+  if (!entradaFavorito) return;
+  try {
+    await api('toggleFavorito', { produtoId, favorito: true });
+  } catch(e) {}
+  entradaFavorito = false;
+  const btn = document.getElementById('btn-entrada-favorito');
+  if (btn) btn.textContent = '☆';
 }
 
 // ═══════════════════════════════════════════

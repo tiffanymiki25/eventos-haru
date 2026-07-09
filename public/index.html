@@ -353,6 +353,10 @@
     </div>
     <div class="form-group"><label class="label">Quantidade de Entrada</label><input class="input" type="number" id="entrada-qtd" placeholder="0" min="1"/></div>
     <div class="gap-8">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-top:1px solid var(--border);margin-bottom:8px">
+      <span style="font-size:13px;color:var(--text-3)">Marcar como favorito no PDV</span>
+      <button class="btn-favorito" id="btn-entrada-favorito" onclick="toggleEntradaFavorito()">☆</button>
+    </div>
       <button class="btn btn-primary" onclick="salvarEntrada()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>Salvar Produto</button>
       <button class="btn btn-secondary" onclick="fecharModalEntrada()">Cancelar</button>
     </div>
@@ -424,7 +428,13 @@
   </div>
 </div>
 
-<!-- ══ PDV ══ -->
+<!-- ══ OFFLINE BADGE ══ -->
+<div id="offline-badge" class="offline-badge">
+  ⚠️ Sem conexão — vendas sendo salvas localmente
+  <span id="offline-pendentes"></span>
+</div>
+
+<!-- ══ PDV HOME ══ -->
 <div id="page-pdv" class="page">
   <div class="app-header">
     <div class="header-left">
@@ -433,101 +443,236 @@
       </div>
       <span class="header-title">PDV</span>
     </div>
-    <div style="font-size:11px;color:var(--text-4)" id="pdv-evento-nome"></div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <span class="sync-pendente" id="pdv-sync-badge">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:12px"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+        <span id="pdv-pendentes-count">0</span> pendentes
+      </span>
+      <div style="font-size:11px;color:var(--text-4)" id="pdv-evento-nome"></div>
+    </div>
+  </div>
+  <div class="page-content">
+    <div class="pdv-home-grid">
+
+      <!-- Nova Venda -->
+      <button class="pdv-home-btn nova-venda" onclick="goSubPdv('nova-venda')">
+        <div class="phb-icon">🛒</div>
+        <div class="phb-text">
+          <span class="phb-title">Nova Venda</span>
+          <span class="phb-desc">Todos os produtos do evento</span>
+        </div>
+        <svg class="phb-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+
+      <!-- Acesso Rápido (sub-botão) -->
+      <button class="pdv-sub-btn" onclick="goSubPdv('rapido')">
+        <div class="psb-icon">⚡</div>
+        <div>
+          <div class="psb-title">Acesso Rápido</div>
+          <div class="psb-desc">Favoritos e produtos sem código</div>
+        </div>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:16px;color:var(--text-4);margin-left:auto"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+
+      <!-- Sorvetes -->
+      <button class="pdv-home-btn sorvetes" onclick="goSubPdv('sorvetes')">
+        <div class="phb-icon">🍨</div>
+        <div class="phb-text">
+          <span class="phb-title">Sorvetes</span>
+          <span class="phb-desc">Produtos por categoria</span>
+        </div>
+        <svg class="phb-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+
+      <!-- Histórico -->
+      <button class="pdv-home-btn historico" onclick="goSubPdv('historico')">
+        <div class="phb-icon">📋</div>
+        <div class="phb-text">
+          <span class="phb-title">Histórico</span>
+          <span class="phb-desc">Vendas registradas</span>
+        </div>
+        <svg class="phb-arrow" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width:18px"><path d="M9 18l6-6-6-6"/></svg>
+      </button>
+
+    </div>
+    <div style="height:20px"></div>
+  </div>
+</div>
+
+<!-- ══ PDV NOVA VENDA ══ -->
+<div id="page-pdv-venda" class="page">
+  <div class="app-header">
+    <div class="header-left">
+      <div class="back-btn" onclick="goSubPdv('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </div>
+      <span class="header-title">Nova Venda</span>
+    </div>
+  </div>
+  <div class="page-content" style="padding-bottom:80px">
+    <div class="search-wrap mb-12">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
+      <input class="input" type="text" id="venda-busca"
+             placeholder="Buscar produto..."
+             oninput="renderGradeProdutos()"/>
+    </div>
+    <div id="venda-grade" class="pdv-grade"></div>
+  </div>
+  <!-- Carrinho FAB -->
+  <button class="pdv-carrinho-fab" id="venda-fab" onclick="abrirCarrinho()" style="display:none">
+    <div class="cfab-left">
+      <div class="cfab-badge" id="venda-fab-qtd">0</div>
+      <span class="cfab-label">Ver carrinho</span>
+    </div>
+    <span class="cfab-total" id="venda-fab-total">R$ 0,00</span>
+  </button>
+</div>
+
+<!-- ══ PDV ACESSO RÁPIDO ══ -->
+<div id="page-pdv-rapido" class="page">
+  <div class="app-header">
+    <div class="header-left">
+      <div class="back-btn" onclick="goSubPdv('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </div>
+      <span class="header-title">⚡ Acesso Rápido</span>
+    </div>
+  </div>
+  <div class="page-content" style="padding-bottom:80px">
+    <div id="rapido-grade" class="pdv-rapido-grid"></div>
+  </div>
+  <button class="pdv-carrinho-fab" id="rapido-fab" onclick="abrirCarrinho()" style="display:none">
+    <div class="cfab-left">
+      <div class="cfab-badge" id="rapido-fab-qtd">0</div>
+      <span class="cfab-label">Ver carrinho</span>
+    </div>
+    <span class="cfab-total" id="rapido-fab-total">R$ 0,00</span>
+  </button>
+</div>
+
+<!-- ══ PDV SORVETES ══ -->
+<div id="page-pdv-sorvetes" class="page">
+  <div class="app-header">
+    <div class="header-left">
+      <div class="back-btn" onclick="goSubPdv('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </div>
+      <span class="header-title">🍨 Sorvetes</span>
+    </div>
+  </div>
+  <div class="page-content" style="padding-bottom:80px">
+    <!-- Scanner -->
+    <div style="margin-bottom:12px">
+      <div class="scanner-wrap" style="aspect-ratio:3/1.5;display:none" id="sorv-scanner-wrap">
+        <div class="scanner-idle" id="sorv-scanner-idle">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="20" height="12" rx="2"/><path d="M5 9v6M8 8v8M11 9v6M14 8v8M17 9v6"/></svg>
+          Câmera inativa
+        </div>
+        <video id="video-sorvetes" style="display:none" playsinline></video>
+        <div class="scanner-overlay" id="sorv-scanner-overlay" style="display:none">
+          <div class="scanner-frame"><div class="scanner-line"></div></div>
+        </div>
+      </div>
+      <button class="btn btn-secondary btn-sm mb-12" onclick="toggleScannerSorvetes()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9V5a2 2 0 012-2h4M15 3h4a2 2 0 012 2v4M3 15v4a2 2 0 002 2h4M15 21h4a2 2 0 002-2v-4"/></svg>
+        <span id="btn-scanner-sorv-label">Escanear outro produto</span>
+      </button>
+    </div>
+    <div id="sorvetes-conteudo"></div>
+  </div>
+  <button class="pdv-carrinho-fab" id="sorv-fab" onclick="abrirCarrinho()" style="display:none">
+    <div class="cfab-left">
+      <div class="cfab-badge" id="sorv-fab-qtd">0</div>
+      <span class="cfab-label">Ver carrinho</span>
+    </div>
+    <span class="cfab-total" id="sorv-fab-total">R$ 0,00</span>
+  </button>
+</div>
+
+<!-- ══ PDV HISTÓRICO ══ -->
+<div id="page-pdv-historico" class="page">
+  <div class="app-header">
+    <div class="header-left">
+      <div class="back-btn" onclick="goSubPdv('home')">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </div>
+      <span class="header-title">📋 Histórico</span>
+    </div>
+    <button class="btn btn-secondary btn-sm" style="width:auto" onclick="carregarVendas()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
+    </button>
+  </div>
+  <div class="page-content">
+    <div id="pdv-historico" class="gap-8"></div>
+    <div style="height:20px"></div>
+  </div>
+</div>
+
+<!-- ══ PDV CARRINHO ══ -->
+<div id="page-pdv-carrinho" class="page">
+  <div class="app-header">
+    <div class="header-left">
+      <div class="back-btn" id="btn-voltar-carrinho" onclick="voltarDaCarrinho()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg>
+      </div>
+      <span class="header-title">Carrinho</span>
+    </div>
+    <button style="background:none;border:none;font-size:12px;color:var(--accent3);cursor:pointer;font-family:'Inter',sans-serif;font-weight:600" onclick="limparCarrinho()">
+      Limpar
+    </button>
   </div>
   <div class="page-content">
 
-    <!-- Carrinho vazio -->
-    <div id="pdv-carrinho-vazio" style="text-align:center;padding:32px 16px;color:var(--text-4)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="width:48px;height:48px;margin:0 auto 12px;display:block;opacity:.25"><path d="M6 2L3 6v14a2 2 0 002 2h14a2 2 0 002-2V6l-3-4zM3 6h18M16 10a4 4 0 01-8 0"/></svg>
-      <p style="font-size:14px;font-weight:500">Carrinho vazio</p>
-      <p style="font-size:12px;margin-top:4px">Adicione produtos para começar</p>
-    </div>
-
-    <!-- Lista de itens do carrinho -->
-    <div id="pdv-carrinho-lista" style="display:none">
-      <p class="section-title">Carrinho</p>
-      <div id="pdv-itens" class="gap-8" style="margin-bottom:16px"></div>
-    </div>
-
-    <!-- Botão adicionar produto -->
-    <button class="btn btn-secondary mb-12" onclick="abrirModalPdvProduto()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
-      Adicionar Produto
-    </button>
+    <!-- Itens -->
+    <div id="carrinho-itens" class="gap-8" style="margin-bottom:16px"></div>
 
     <!-- Resumo financeiro -->
-    <div id="pdv-resumo" style="display:none">
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:10px">
+        <span style="font-size:13px;color:var(--text-3)">Subtotal</span>
+        <span style="font-size:13px;font-family:monospace" id="carr-subtotal">R$ 0,00</span>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
+        <span style="font-size:13px;color:var(--text-3)">Desconto (R$)</span>
+        <input type="number" id="carr-desconto" value="0" min="0" step="0.50"
+               style="width:100px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);outline:none"
+               oninput="atualizarTotalPdv()"/>
+      </div>
+      <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)">
+        <span style="font-size:16px;font-weight:800">Total</span>
+        <span style="font-size:16px;font-weight:800;color:var(--rosa)" id="carr-total">R$ 0,00</span>
+      </div>
+    </div>
+
+    <!-- Pagamento -->
+    <p class="section-title">Forma de Pagamento</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px">
+      <button class="pdv-pag-btn" id="pag-dinheiro" onclick="selecionarPagamento('dinheiro')">💵 Dinheiro</button>
+      <button class="pdv-pag-btn" id="pag-pix"      onclick="selecionarPagamento('pix')">📱 PIX</button>
+      <button class="pdv-pag-btn" id="pag-credito"  onclick="selecionarPagamento('credito')">💳 Crédito</button>
+      <button class="pdv-pag-btn" id="pag-debito"   onclick="selecionarPagamento('debito')">💳 Débito</button>
+    </div>
+
+    <!-- Troco -->
+    <div id="pdv-troco-wrap" style="display:none">
       <div class="card" style="margin-bottom:12px">
-        <div style="display:flex;justify-content:space-between;margin-bottom:10px">
-          <span style="font-size:13px;color:var(--text-3)">Subtotal</span>
-          <span style="font-size:13px;font-family:monospace" id="pdv-subtotal">R$ 0,00</span>
-        </div>
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-size:13px;color:var(--text-3)">Desconto (R$)</span>
-          <input type="number" id="pdv-desconto" value="0" min="0" step="0.50"
-                 style="width:100px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);outline:none"
-                 oninput="atualizarTotalPdv()"/>
+          <span style="font-size:13px;color:var(--text-3)">Valor Recebido (R$)</span>
+          <input type="number" id="pdv-recebido" value="" min="0" step="0.50" placeholder="0,00"
+                 style="width:110px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);outline:none"
+                 oninput="calcularTroco()"/>
         </div>
         <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)">
-          <span style="font-size:16px;font-weight:800">Total</span>
-          <span style="font-size:16px;font-weight:800;color:var(--rosa)" id="pdv-total">R$ 0,00</span>
+          <span style="font-size:15px;font-weight:700">Troco</span>
+          <span style="font-size:15px;font-weight:700;color:var(--verde)" id="pdv-troco-val">R$ 0,00</span>
         </div>
       </div>
-
-      <!-- Forma de pagamento -->
-      <p class="section-title">Forma de Pagamento</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px" id="pdv-pagamento-btns">
-        <button class="pdv-pag-btn" id="pag-dinheiro" onclick="selecionarPagamento('dinheiro')">
-          💵 Dinheiro
-        </button>
-        <button class="pdv-pag-btn" id="pag-pix" onclick="selecionarPagamento('pix')">
-          📱 PIX
-        </button>
-        <button class="pdv-pag-btn" id="pag-credito" onclick="selecionarPagamento('credito')">
-          💳 Crédito
-        </button>
-        <button class="pdv-pag-btn" id="pag-debito" onclick="selecionarPagamento('debito')">
-          💳 Débito
-        </button>
-      </div>
-
-      <!-- Troco (só aparece para dinheiro) -->
-      <div id="pdv-troco-wrap" style="display:none">
-        <div class="card" style="margin-bottom:12px">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-            <span style="font-size:13px;color:var(--text-3)">Valor Recebido (R$)</span>
-            <input type="number" id="pdv-recebido" value="" min="0" step="0.50"
-                   placeholder="0,00"
-                   style="width:110px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);outline:none"
-                   oninput="calcularTroco()"/>
-          </div>
-          <div style="display:flex;justify-content:space-between;padding-top:10px;border-top:1px solid var(--border)">
-            <span style="font-size:15px;font-weight:700">Troco</span>
-            <span style="font-size:15px;font-weight:700;color:var(--verde)" id="pdv-troco-val">R$ 0,00</span>
-          </div>
-        </div>
-      </div>
-
-      <!-- Botão confirmar -->
-      <button class="btn btn-primary" id="btn-confirmar-venda" onclick="confirmarVenda()" disabled>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
-        Confirmar Venda
-      </button>
     </div>
 
-    <!-- Histórico de vendas -->
-    <div style="margin-top:20px">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
-        <p class="section-title" style="margin-bottom:0">Vendas do evento</p>
-        <button class="btn btn-secondary btn-sm" style="width:auto" onclick="carregarVendas()">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.51 9a9 9 0 0114.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0020.49 15"/></svg>
-          Atualizar
-        </button>
-      </div>
-      <div id="pdv-historico" class="gap-8"></div>
-    </div>
-
+    <button class="btn btn-primary" id="btn-confirmar-venda" onclick="confirmarVenda()" disabled>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 6L9 17l-5-5"/></svg>
+      Confirmar Venda
+    </button>
     <div style="height:20px"></div>
   </div>
 </div>

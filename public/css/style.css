@@ -813,3 +813,293 @@ textarea.input { resize: vertical; min-height: 80px; }
   background: #f5f3ff;
   color: #7c3aed;
 }
+
+/* ── PDV REDESIGN ── */
+
+/* Home PDV */
+.pdv-home-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pdv-home-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 18px 16px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--surface);
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: transform .15s;
+  text-align: left;
+  box-shadow: var(--shadow-sm);
+}
+.pdv-home-btn:active { transform: scale(.98); }
+.pdv-home-btn .phb-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  flex-shrink: 0;
+}
+.pdv-home-btn .phb-text { flex: 1; }
+.pdv-home-btn .phb-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+  display: block;
+}
+.pdv-home-btn .phb-desc {
+  font-size: 12px;
+  color: var(--text-4);
+  display: block;
+  margin-top: 2px;
+}
+.pdv-home-btn .phb-arrow {
+  color: var(--text-4);
+  flex-shrink: 0;
+}
+.pdv-home-btn.nova-venda { border-color: var(--rosa-border); background: var(--rosa-light); }
+.pdv-home-btn.nova-venda .phb-icon { background: rgba(244,63,94,.12); }
+.pdv-home-btn.sorvetes { border-color: var(--azul-border); background: var(--azul-light); }
+.pdv-home-btn.sorvetes .phb-icon { background: rgba(37,99,235,.1); }
+.pdv-home-btn.historico { border-color: var(--verde-border); background: var(--verde-light); }
+.pdv-home-btn.historico .phb-icon { background: rgba(22,163,74,.1); }
+
+/* Sub-botão Acesso Rápido */
+.pdv-sub-btn {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px 12px 24px;
+  border-radius: var(--radius);
+  border: 1px solid var(--border);
+  background: var(--surface2);
+  font-family: 'Inter', sans-serif;
+  cursor: pointer;
+  transition: transform .15s;
+  text-align: left;
+  margin-top: 6px;
+}
+.pdv-sub-btn:active { transform: scale(.98); }
+.pdv-sub-btn .psb-icon {
+  font-size: 18px;
+  width: 36px;
+  height: 36px;
+  background: rgba(255,159,28,.1);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+.pdv-sub-btn .psb-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.pdv-sub-btn .psb-desc {
+  font-size: 11px;
+  color: var(--text-4);
+  margin-top: 1px;
+}
+
+/* Grade compacta de produtos */
+.pdv-grade {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.pdv-grade-item {
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius);
+  padding: 10px;
+  cursor: pointer;
+  transition: all .15s;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.pdv-grade-item:active {
+  transform: scale(.96);
+  border-color: var(--rosa);
+  background: var(--rosa-light);
+}
+.pdv-grade-item .pgi-nome {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  line-height: 1.3;
+}
+.pdv-grade-item .pgi-codigo {
+  font-size: 10px;
+  color: var(--text-4);
+  font-family: monospace;
+}
+.pdv-grade-item .pgi-preco {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--rosa);
+  margin-top: 2px;
+}
+.pdv-grade-item .pgi-estoque {
+  font-size: 10px;
+  color: var(--text-4);
+}
+
+/* Acesso rápido — botões grandes */
+.pdv-rapido-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.pdv-rapido-item {
+  background: var(--surface);
+  border: 2px solid var(--laranja-border);
+  border-radius: var(--radius-lg);
+  padding: 14px 10px;
+  cursor: pointer;
+  transition: all .15s;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+}
+.pdv-rapido-item:active {
+  transform: scale(.96);
+  background: var(--laranja-light);
+}
+.pdv-rapido-item .pri-nome {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text);
+  line-height: 1.3;
+}
+.pdv-rapido-item .pri-preco {
+  font-size: 14px;
+  font-weight: 800;
+  color: var(--rosa);
+}
+.pdv-rapido-item .pri-icon { font-size: 24px; }
+
+/* Sorvetes — agrupados por categoria */
+.sorvete-categoria {
+  margin-bottom: 16px;
+}
+.sorvete-categoria-titulo {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  color: var(--text-3);
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sorvete-categoria-titulo::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  background: var(--azul);
+  border-radius: 2px;
+  display: block;
+}
+
+/* Carrinho flutuante */
+.pdv-carrinho-fab {
+  position: fixed;
+  bottom: 16px;
+  left: 16px;
+  right: 16px;
+  background: var(--text);
+  color: white;
+  border: none;
+  border-radius: var(--radius-lg);
+  padding: 14px 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(0,0,0,.25);
+  font-family: 'Inter', sans-serif;
+  transition: transform .15s;
+  z-index: 50;
+}
+.pdv-carrinho-fab:active { transform: scale(.98); }
+.pdv-carrinho-fab .cfab-left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pdv-carrinho-fab .cfab-badge {
+  background: var(--rosa);
+  color: white;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: 800;
+}
+.pdv-carrinho-fab .cfab-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+.pdv-carrinho-fab .cfab-total {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--accent);
+}
+
+/* Offline badge */
+.offline-badge {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  background: var(--vermelho);
+  color: white;
+  text-align: center;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px;
+  z-index: 9999;
+  display: none;
+}
+.offline-badge.show { display: block; }
+
+/* Btn favorito */
+.btn-favorito {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 20px;
+  padding: 4px;
+  transition: transform .15s;
+  line-height: 1;
+}
+.btn-favorito:active { transform: scale(.8); }
+
+/* Pendentes sync badge */
+.sync-pendente {
+  background: var(--laranja);
+  color: white;
+  border-radius: var(--radius-pill);
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 700;
+  display: none;
+}
+.sync-pendente.show { display: inline-flex; align-items: center; gap: 4px; }

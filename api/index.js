@@ -93,6 +93,7 @@ module.exports = async function handler(req, res) {
       case 'getCatalogo':     return await getCatalogo(res, body);
       case 'salvarProduto':   return await salvarProduto(res, body);
       case 'deletarProduto':  return await deletarProduto(res, body);
+      case 'toggleFavorito': return await toggleFavorito(res, body);
       case 'importarCSV':     return await importarCSV(res, body);
 
       // EVENTO PRODUTOS
@@ -288,9 +289,11 @@ async function salvarProduto(res, body) {
   if (!preco_loja) return err(res, 'Preço de loja obrigatório');
 
   const registro = {
-    codigo: codigo || null,
+    codigo:     codigo || null,
     nome,
-    preco_loja: parseFloat(preco_loja)
+    preco_loja: parseFloat(preco_loja),
+    categoria:  body.categoria || null,
+    favorito:   body.favorito === true
   };
 
   let data, error;
@@ -330,6 +333,21 @@ async function deletarProduto(res, body) {
 
   if (error) return err(res, error.message);
   await addLog(body.username, null, 'PRODUTO_DELETADO', produtoId);
+  return ok(res, { ok: true });
+}
+
+async function toggleFavorito(res, body) {
+  const { produtoId, favorito } = body;
+  if (!produtoId) return err(res, 'produtoId obrigatório');
+
+  const { error } = await supabase
+    .from('produtos_catalogo')
+    .update({ favorito: !!favorito })
+    .eq('id', produtoId);
+
+  if (error) return err(res, error.message);
+  await addLog(body.username, null, 'FAVORITO', 
+    `${produtoId} → ${favorito ? '⭐ favorito' : 'removido'}`);
   return ok(res, { ok: true });
 }
 
@@ -395,7 +413,7 @@ async function getProdutosEvento(res, body) {
     .from('evento_produtos')
     .select(`
       *,
-      produto:produto_id (id, codigo, nome, preco_loja)
+      produto:produto_id (id, codigo, nome, preco_loja, categoria, favorito)
     `)
     .eq('evento_id', eventoId)
     .order('atualizado_em', { ascending: false });
