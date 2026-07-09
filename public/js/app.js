@@ -472,23 +472,32 @@ function renderEntrada() {
 
 function abrirModalEntrada(produtoExistente = null) {
   produtoEditandoId = null;
-  document.getElementById('modal-entrada-titulo').textContent = 'Adicionar Produto';
-  document.getElementById('entrada-codigo').value      = '';
-  document.getElementById('entrada-nome').value        = '';
-  document.getElementById('entrada-preco-loja').value  = '';
-  document.getElementById('entrada-preco-venda').value = '';
-  document.getElementById('entrada-qtd').value         = '';
+  document.getElementById('modal-entrada-titulo').textContent  = 'Adicionar Produto';
+  document.getElementById('entrada-codigo').value              = '';
+  document.getElementById('entrada-nome').value                = '';
+  document.getElementById('entrada-preco-loja').value          = '';
+  document.getElementById('entrada-preco-venda').value         = '';
+  document.getElementById('entrada-qtd').value                 = '';
   document.getElementById('entrada-hint-sugerido').textContent = '';
-  document.getElementById('entrada-scanned').style.display = 'none';
+  document.getElementById('entrada-scanned').style.display     = 'none';
+  // Reset categoria e favorito
+  const catEl  = document.getElementById('entrada-categoria');
+  const favBtn = document.getElementById('btn-entrada-favorito');
+  if (catEl)  catEl.value          = '';
+  entradaFavorito = false;
+  if (favBtn) favBtn.textContent   = '☆';
 
   if (produtoExistente) {
     produtoEditandoId = produtoExistente.produto_id;
-    document.getElementById('modal-entrada-titulo').textContent = 'Editar Produto';
-    document.getElementById('entrada-codigo').value      = produtoExistente.produto?.codigo || '';
-    document.getElementById('entrada-nome').value        = produtoExistente.produto?.nome || '';
-    document.getElementById('entrada-preco-loja').value  = produtoExistente.produto?.preco_loja || '';
-    document.getElementById('entrada-preco-venda').value = produtoExistente.preco_venda || '';
-    document.getElementById('entrada-qtd').value         = produtoExistente.qtd_entrada || '';
+    document.getElementById('modal-entrada-titulo').textContent  = 'Editar Produto';
+    document.getElementById('entrada-codigo').value              = produtoExistente.produto?.codigo    || '';
+    document.getElementById('entrada-nome').value                = produtoExistente.produto?.nome      || '';
+    document.getElementById('entrada-preco-loja').value          = produtoExistente.produto?.preco_loja || '';
+    document.getElementById('entrada-preco-venda').value         = produtoExistente.preco_venda         || '';
+    document.getElementById('entrada-qtd').value                 = produtoExistente.qtd_entrada         || '';
+    if (catEl)  catEl.value        = produtoExistente.produto?.categoria || '';
+    entradaFavorito                = produtoExistente.produto?.favorito  || false;
+    if (favBtn) favBtn.textContent = entradaFavorito ? '⭐' : '☆';
   }
   abrirModal('modal-entrada');
 }
@@ -537,11 +546,13 @@ async function salvarEntrada() {
   mostrarLoading('Salvando...');
   try {
     // 1. Salva/atualiza no catálogo
+    const categoria = document.getElementById('entrada-categoria')?.value.trim() || null;
     const catData = await api('salvarProduto', {
       id: produtoEditandoId || undefined,
       codigo: codigo || null,
       nome,
-      preco_loja: precoLoja
+      preco_loja: precoLoja,
+      categoria
     });
     const produtoId = catData.produto.id;
 
@@ -552,7 +563,7 @@ async function salvarEntrada() {
       await api('adicionarEntrada', { eventoId: eventoAtivo.id, produtoId, qtd_entrada: qtd, preco_venda: precoVenda });
     }
 
-    await aplicarFavoritoSeNecessario(pid);
+    await aplicarFavoritoSeNecessario(produtoId);
     fecharModalEntrada(); toast('Produto salvo!', 'success'); await carregarEntrada();
   } catch (e) {
     toast(e.message, 'error');
@@ -1037,9 +1048,11 @@ async function carregarAdminCatalogo() {
 function abrirModalProdutoAdmin(prod = null) {
   produtoAdminEditandoId = prod?.id || null;
   document.getElementById('modal-produto-admin-titulo').textContent = prod ? 'Editar Produto' : 'Novo Produto';
-  document.getElementById('admin-prod-codigo').value = prod?.codigo || '';
-  document.getElementById('admin-prod-nome').value   = prod?.nome   || '';
-  document.getElementById('admin-prod-preco').value  = prod?.preco_loja || '';
+  document.getElementById('admin-prod-codigo').value = prod?.codigo     || '';
+  document.getElementById('admin-prod-nome').value   = prod?.nome       || '';
+  document.getElementById('admin-prod-preco').value  = prod?.preco_loja  || '';
+  const catEl = document.getElementById('admin-prod-categoria');
+  if (catEl) catEl.value = prod?.categoria || '';
   abrirModal('modal-produto-admin');
 }
 
@@ -1047,6 +1060,7 @@ async function salvarProdutoAdmin() {
   const codigo    = document.getElementById('admin-prod-codigo').value.trim();
   const nome      = document.getElementById('admin-prod-nome').value.trim();
   const precoLoja = document.getElementById('admin-prod-preco').value;
+  const categoria = document.getElementById('admin-prod-categoria')?.value.trim() || null;
   if (!nome)      { toast('Digite o nome do produto', 'error'); return; }
   if (!precoLoja) { toast('Digite o preço de loja', 'error');   return; }
   mostrarLoading('Salvando...');
@@ -1055,7 +1069,8 @@ async function salvarProdutoAdmin() {
       id: produtoAdminEditandoId,
       codigo: codigo || null,
       nome,
-      preco_loja: parseFloat(precoLoja)
+      preco_loja: parseFloat(precoLoja),
+      categoria
     });
     fecharModal('modal-produto-admin');
     toast('Produto salvo!', 'success');
@@ -1365,8 +1380,10 @@ function goSubPdv(sub) {
   if (sub === 'nova-venda') {
     pdvTelaAnterior = 'nova-venda';
     document.getElementById('page-pdv-venda').classList.add('active');
-    document.getElementById('venda-busca').value = '';
+    const busEl = document.getElementById('venda-busca');
+    if (busEl) busEl.value = '';
     renderGradeProdutos();
+    renderAtalhosVenda();
     atualizarFab();
     return;
   }
@@ -1606,12 +1623,20 @@ async function confirmarVenda() {
 function renderGradeProdutos() {
   const el    = document.getElementById('venda-grade');
   const busca = (document.getElementById('venda-busca')?.value || '').toLowerCase();
+
+  // Sem busca: mostra mensagem orientativa
+  if (!busca) {
+    el.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:20px 0;color:var(--text-4);font-size:13px">
+      Digite para buscar ou escaneie o código de barras
+    </div>`;
+    return;
+  }
+
   const lista = produtos.filter(p =>
-    !busca ||
     (p.produto?.nome   || '').toLowerCase().includes(busca) ||
     (p.produto?.codigo || '').toLowerCase().includes(busca)
   );
-  if (!lista.length) { el.innerHTML = emptyState('Nenhum produto'); return; }
+  if (!lista.length) { el.innerHTML = emptyState('Nenhum produto encontrado'); return; }
   el.innerHTML = lista.map(p => `
     <div class="pdv-grade-item" onclick='adicionarAoCarrinho(${JSON.stringify(p)})'>
       <div class="pgi-nome">${esc(p.produto?.nome || '')}</div>
@@ -1648,6 +1673,31 @@ function toggleScannerVenda() {
       }
     });
   }
+}
+
+// ── ATALHOS DENTRO DE NOVA VENDA ──
+function renderAtalhosVenda() {
+  const el = document.getElementById('venda-atalhos');
+  if (!el) return;
+  const temFav = produtos.some(p => p.produto?.favorito === true || !p.produto?.codigo);
+  const temSorv = produtos.some(p => (p.produto?.categoria || '').toLowerCase().includes('sorvete'));
+  el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      ${temFav ? `<button class="pdv-home-btn nova-venda" style="padding:12px" onclick="goSubPdv('rapido')">
+        <div class="phb-icon" style="width:36px;height:36px;font-size:18px">⚡</div>
+        <div class="phb-text">
+          <span class="phb-title" style="font-size:13px">Acesso Rápido</span>
+          <span class="phb-desc" style="font-size:11px">Favoritos</span>
+        </div>
+      </button>` : ''}
+      ${temSorv ? `<button class="pdv-home-btn sorvetes" style="padding:12px" onclick="goSubPdv('sorvetes')">
+        <div class="phb-icon" style="width:36px;height:36px;font-size:18px">🍨</div>
+        <div class="phb-text">
+          <span class="phb-title" style="font-size:13px">Sorvetes</span>
+          <span class="phb-desc" style="font-size:11px">Por categoria</span>
+        </div>
+      </button>` : ''}
+    </div>`;
 }
 
 // ── ACESSO RÁPIDO ──
