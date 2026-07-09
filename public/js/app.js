@@ -1621,6 +1621,35 @@ function renderGradeProdutos() {
     </div>`).join('');
 }
 
+// ── SCANNER NOVA VENDA ──
+let scannerVendaAtivo = false;
+
+function toggleScannerVenda() {
+  if (scannerVendaAtivo) {
+    stopScanner();
+    scannerVendaAtivo = false;
+    document.getElementById('venda-scanner-wrap').style.display   = 'none';
+    document.getElementById('btn-scanner-venda-label').textContent = 'Escanear Produto';
+  } else {
+    scannerVendaAtivo = true;
+    document.getElementById('venda-scanner-wrap').style.display    = 'block';
+    document.getElementById('venda-scanner-idle').style.display    = 'flex';
+    document.getElementById('venda-scanner-overlay').style.display = 'none';
+    document.getElementById('btn-scanner-venda-label').textContent = 'Parar câmera';
+    startScanner('video-venda', (codigo) => {
+      scannerVendaAtivo = false;
+      document.getElementById('venda-scanner-wrap').style.display   = 'none';
+      document.getElementById('btn-scanner-venda-label').textContent = 'Escanear Produto';
+      const prod = produtos.find(p => p.produto?.codigo === codigo);
+      if (prod) {
+        adicionarAoCarrinho(prod);
+      } else {
+        toast('Produto não encontrado neste evento', 'error');
+      }
+    });
+  }
+}
+
 // ── ACESSO RÁPIDO ──
 function renderRapido() {
   const el    = document.getElementById('rapido-grade');
