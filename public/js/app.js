@@ -275,6 +275,26 @@ function atualizarResumo() {
     faturamento > 0 ? 'R$' + faturamento.toFixed(2) : '—';
 }
 
+async function carregarTop10() {
+  const el = document.getElementById('home-top10');
+  if (!el || !eventoAtivo) return;
+  try {
+    const d = await api('getTopProdutos', { eventoId: eventoAtivo.id, limit: 10 });
+    const ranking = d.ranking || [];
+    if (!ranking.length) { el.style.display = 'none'; return; }
+    el.style.display = 'block';
+    document.getElementById('home-top10-lista').innerHTML = ranking.map((p, i) => `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="font-size:13px;font-weight:800;color:var(--rosa);width:24px;text-align:center;flex-shrink:0">${i + 1}º</div>
+        <div style="flex:1;font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.nome)}</div>
+        <div style="flex-shrink:0;text-align:right">
+          <div style="font-size:13px;font-weight:700;color:var(--verde)">${p.qtd} vend.</div>
+          <div style="font-size:10px;color:var(--text-4)">R$${p.receita.toFixed(2)}</div>
+        </div>
+      </div>`).join('');
+  } catch(e) { el.style.display = 'none'; }
+}
+
 async function prefetchProdutos() {
   if (!eventoAtivo) return;
   try {
@@ -885,10 +905,8 @@ function exportarCSV() {
 // ═══════════════════════════════════════════
 function iniciarPesquisa() {
   document.getElementById('pesquisa-input').value = '';
-  document.getElementById('pesquisa-resultados').innerHTML =
-    emptyState('Digite para pesquisar');
   document.getElementById('pesquisa-scanner-wrap').style.display = 'none';
-  setTimeout(() => document.getElementById('pesquisa-input').focus(), 300);
+  renderPesquisa(); // mostra lista completa imediatamente
 }
 
 let scannerPesquisaAtivo = false;
@@ -919,34 +937,47 @@ function toggleScannerPesquisa() {
 function renderPesquisa() {
   const busca = document.getElementById('pesquisa-input').value.toLowerCase().trim();
   const el    = document.getElementById('pesquisa-resultados');
-  if (!busca) { el.innerHTML = emptyState('Digite para pesquisar'); return; }
-  const results = produtos.filter(p =>
-    (p.produto?.nome || '').toLowerCase().includes(busca) ||
-    (p.produto?.codigo || '').toLowerCase().includes(busca)
-  );
-  if (!results.length) { el.innerHTML = emptyState('Nenhum produto encontrado'); return; }
-  el.innerHTML = results.map(p => {
-    const vendido = p.qtd_retorno !== null ? p.qtd_entrada - p.qtd_retorno : null;
-    return `<div class="card" style="margin-bottom:10px">
-      <div style="font-size:15px;font-weight:700;margin-bottom:2px">${esc(p.produto?.nome || '')}</div>
-      <div style="font-size:11px;color:var(--text-4);font-family:monospace;margin-bottom:12px">${esc(p.produto?.codigo || 'sem código')}</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px">
-        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px;text-align:center">
-          <div style="font-size:16px;font-weight:800;color:var(--rosa)">R$${parseFloat(p.preco_venda).toFixed(2)}</div>
-          <div style="font-size:10px;color:var(--text-4);text-transform:uppercase;letter-spacing:.05em">Preço Venda</div>
+  const lista = busca
+    ? produtos.filter(p =>
+        (p.produto?.nome   || '').toLowerCase().includes(busca) ||
+        (p.produto?.codigo || '').toLowerCase().includes(busca))
+    : [...produtos].sort((a, b) =>
+        (a.produto?.nome || '').localeCompare(b.produto?.nome || '', 'pt-BR'));
+
+  if (!lista.length) {
+    el.innerHTML = emptyState(busca ? 'Nenhum produto encontrado' : 'Nenhum produto cadastrado');
+    return;
+  }
+
+  el.innerHTML = lista.map(p => {
+    const vendido   = p.qtd_retorno !== null ? p.qtd_entrada - p.qtd_retorno : null;
+    const estoqueAt = p.qtd_retorno !== null ? p.qtd_retorno : p.qtd_entrada;
+    return `<div class="card" style="margin-bottom:8px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:700;margin-bottom:2px">${esc(p.produto?.nome || '')}</div>
+          ${p.produto?.codigo ? `<div style="font-size:10px;color:var(--text-4);font-family:monospace;margin-bottom:6px">${esc(p.produto.codigo)}</div>` : ''}
+          ${p.produto?.categoria ? `<span style="font-size:10px;background:var(--surface2);color:var(--text-3);padding:2px 8px;border-radius:20px">${esc(p.produto.categoria)}</span>` : ''}
         </div>
-        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px;text-align:center">
-          <div style="font-size:16px;font-weight:800;color:var(--azul)">${p.qtd_entrada}</div>
-          <div style="font-size:10px;color:var(--text-4);text-transform:uppercase;letter-spacing:.05em">Entrada</div>
-        </div>
-        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:10px;text-align:center">
-          <div style="font-size:16px;font-weight:800;color:var(--verde)">${vendido !== null ? vendido : '—'}</div>
-          <div style="font-size:10px;color:var(--text-4);text-transform:uppercase;letter-spacing:.05em">Vendido</div>
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:15px;font-weight:800;color:var(--rosa)">R$${parseFloat(p.preco_venda).toFixed(2)}</div>
+          <div style="font-size:10px;color:var(--text-4)">loja: R$${parseFloat(p.produto?.preco_loja || 0).toFixed(2)}</div>
         </div>
       </div>
-      ${vendido !== null ? `<div style="margin-top:8px;font-size:12px;color:var(--text-3);text-align:center">
-        Retornou: <strong>${p.qtd_retorno}</strong> · Preço loja: <strong>R$${parseFloat(p.produto?.preco_loja || 0).toFixed(2)}</strong>
-      </div>` : ''}
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:10px">
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px;text-align:center">
+          <div style="font-size:15px;font-weight:800;color:var(--azul)">${p.qtd_entrada}</div>
+          <div style="font-size:10px;color:var(--text-4)">Entrada</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px;text-align:center">
+          <div style="font-size:15px;font-weight:800;color:${estoqueAt > 0 ? 'var(--verde)' : 'var(--vermelho)'}">${estoqueAt}</div>
+          <div style="font-size:10px;color:var(--text-4)">Estoque</div>
+        </div>
+        <div style="background:var(--surface2);border-radius:var(--radius-sm);padding:8px;text-align:center">
+          <div style="font-size:15px;font-weight:800;color:var(--rosa)">${vendido !== null ? vendido : '—'}</div>
+          <div style="font-size:10px;color:var(--text-4)">Vendido</div>
+        </div>
+      </div>
     </div>`;
   }).join('');
 }

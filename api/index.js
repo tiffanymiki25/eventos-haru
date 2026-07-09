@@ -110,6 +110,7 @@ module.exports = async function handler(req, res) {
       case 'getVendas':            return await getVendas(res, body);
       case 'cancelarVenda':        return await cancelarVenda(res, body);
       case 'getRelatorioVendedor': return await getRelatorioVendedor(res, body);
+      case 'getTopProdutos': return await getTopProdutos(res, body);
 
       // USUÁRIOS (admin)
       case 'getUsuarios':     return await getUsuarios(res, body);
@@ -827,6 +828,38 @@ async function getRelatorioVendedor(res, body) {
 
   const ranking = Object.values(byVendedor)
     .sort((a, b) => b.totalValor - a.totalValor);
+
+  return ok(res, { ranking });
+}
+
+async function getTopProdutos(res, body) {
+  const { eventoId, limit } = body;
+  if (!eventoId) return err(res, 'eventoId obrigatório');
+
+  const { data, error } = await supabase
+    .from('vendas')
+    .select('itens')
+    .eq('evento_id', eventoId)
+    .eq('status', 'concluida');
+
+  if (error) return err(res, error.message);
+
+  // Agrega itens de todas as vendas
+  const totais = {};
+  data.forEach(v => {
+    (v.itens || []).forEach(item => {
+      if (!totais[item.produto_id]) {
+        totais[item.produto_id] = { nome: item.nome, qtd: 0, receita: 0 };
+      }
+      totais[item.produto_id].qtd     += item.qtd;
+      totais[item.produto_id].receita += item.subtotal || (item.qtd * item.preco_unit);
+    });
+  });
+
+  const ranking = Object.entries(totais)
+    .map(([id, d]) => ({ produto_id: id, ...d }))
+    .sort((a, b) => b.qtd - a.qtd)
+    .slice(0, limit || 10);
 
   return ok(res, { ranking });
 }
