@@ -121,6 +121,17 @@
     <div id="entrada-evento-nome" style="font-size:11px;color:var(--text-4)"></div>
   </div>
   <div class="page-content">
+    <!-- Busca -->
+    <div style="position:relative;margin-bottom:12px">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+           style="position:absolute;left:12px;top:50%;transform:translateY(-50%);width:16px;color:var(--text-4);pointer-events:none">
+        <circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/>
+      </svg>
+      <input class="input" type="text" id="entrada-busca"
+             placeholder="Buscar por nome ou código..."
+             oninput="renderEntrada()"
+             style="padding-left:38px"/>
+    </div>
     <p class="section-title">Produtos cadastrados</p>
     <div id="entrada-lista" class="product-list"></div>
     <div style="height:80px"></div>
