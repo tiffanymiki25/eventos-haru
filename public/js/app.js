@@ -480,6 +480,9 @@ function renderEntrada() {
         ${p.cadastrado_por ? `<div class="product-by">por <span>${esc(p.cadastrado_por)}</span></div>` : ''}
       </div>
       <div class="product-actions">
+        <button class="btn btn-icon btn-secondary" title="Repor estoque" onclick='abrirModalReposicao(${JSON.stringify(p)})'>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/><circle cx="12" cy="12" r="10"/></svg>
+        </button>
         <button class="btn btn-icon btn-secondary" onclick='abrirModalEntrada(${JSON.stringify(p)})'>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
@@ -585,6 +588,56 @@ async function salvarEntrada() {
 
     await aplicarFavoritoSeNecessario(produtoId);
     fecharModalEntrada(); toast('Produto salvo!', 'success'); await carregarEntrada();
+  } catch (e) {
+    toast(e.message, 'error');
+  } finally {
+    esconderLoading();
+  }
+}
+
+
+// ── REPOSIÇÃO DE ESTOQUE ──
+let produtoReposicaoAtual = null;
+
+function abrirModalReposicao(p) {
+  produtoReposicaoAtual = p;
+  document.getElementById('rep-produto-nome').textContent   = p.produto?.nome || '—';
+  document.getElementById('rep-produto-atual').textContent  = p.qtd_entrada;
+  document.getElementById('rep-qtd').value                  = '';
+  document.getElementById('rep-resultado').textContent      = p.qtd_entrada;
+  document.getElementById('rep-resultado').style.color      = 'var(--text-3)';
+  abrirModal('modal-reposicao');
+  setTimeout(() => document.getElementById('rep-qtd').focus(), 300);
+}
+
+function atualizarPreviewReposicao() {
+  if (!produtoReposicaoAtual) return;
+  const qtdAtual  = produtoReposicaoAtual.qtd_entrada;
+  const adicional = parseInt(document.getElementById('rep-qtd').value) || 0;
+  const novo      = qtdAtual + adicional;
+  const el        = document.getElementById('rep-resultado');
+  el.textContent  = novo;
+  el.style.color  = adicional > 0 ? 'var(--verde)' : 'var(--text-3)';
+}
+
+async function confirmarReposicao() {
+  if (!produtoReposicaoAtual) return;
+  const adicional = parseInt(document.getElementById('rep-qtd').value) || 0;
+  if (adicional <= 0) { toast('Digite uma quantidade maior que zero', 'error'); return; }
+
+  const novaQtd = produtoReposicaoAtual.qtd_entrada + adicional;
+
+  mostrarLoading('Repondo estoque...');
+  try {
+    await api('editarEntrada', {
+      eventoId:    eventoAtivo.id,
+      produtoId:   produtoReposicaoAtual.produto_id,
+      qtd_entrada: novaQtd,
+      preco_venda: produtoReposicaoAtual.preco_venda
+    });
+    fecharModal('modal-reposicao');
+    toast(`+${adicional} unidades adicionadas! Total: ${novaQtd}`, 'success');
+    await carregarEntrada();
   } catch (e) {
     toast(e.message, 'error');
   } finally {
