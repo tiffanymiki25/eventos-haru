@@ -882,38 +882,88 @@ function switchRelTab(tab) {
 
 function renderRelatorio(data) {
   const { produtos: prods, totais } = data;
+
   // Stats
   document.getElementById('rel-stats').innerHTML = `
-    <div class="stat-card"><div class="stat-val azul">${prods.length}</div><div class="stat-lbl">Produtos</div></div>
-    <div class="stat-card"><div class="stat-val rosa">${totais.totalVendido}</div><div class="stat-lbl">Vendidos</div></div>
-    <div class="stat-card"><div class="stat-val verde" style="font-size:14px">R$${totais.faturamento.toFixed(2)}</div><div class="stat-lbl">Faturado</div></div>`;
+    <div class="stat-card">
+      <div class="stat-val azul">${prods.length}</div>
+      <div class="stat-lbl">Produtos</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val rosa">${totais.totalVendidoPdv}</div>
+      <div class="stat-lbl">Vendido PDV</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-val verde" style="font-size:13px">R$${totais.faturamentoPdv.toFixed(2)}</div>
+      <div class="stat-lbl">Fat. PDV</div>
+    </div>`;
 
-  const semRetorno = prods.filter(p => p.qtd_retorno === null).length;
   const tabela = document.getElementById('rel-tabela');
-
   if (!prods.length) { tabela.innerHTML = emptyState('Nenhum produto cadastrado'); return; }
 
-  const comRetorno = prods.filter(p => p.qtd_retorno !== null)
-    .sort((a, b) => b.vendido - a.vendido);
+  const semRetorno = prods.filter(p => p.qtd_retorno === null).length;
+
+  // Ordena por mais vendido no PDV
+  const sorted = [...prods].sort((a, b) => b.vendido_pdv - a.vendido_pdv);
 
   tabela.innerHTML = `
-    ${semRetorno > 0 ? `<div style="background:var(--rosa-light);border:1px solid var(--rosa-border);border-radius:var(--radius-sm);padding:10px 13px;font-size:12px;color:var(--vermelho);margin-bottom:12px">
-      ⚠️ ${semRetorno} produto(s) sem retorno lançado
-    </div>` : ''}
-    <div class="table-wrap">
-      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr">
-        <span>Produto</span><span>Entrou</span><span>Vendido</span><span>Faturou</span>
+    ${semRetorno > 0 ? `
+      <div style="background:var(--rosa-light);border:1px solid var(--rosa-border);border-radius:var(--radius-sm);padding:10px 13px;font-size:12px;color:var(--vermelho);margin-bottom:12px">
+        ⚠️ ${semRetorno} produto(s) sem retorno físico lançado
+      </div>` : ''}
+
+    <!-- Totais por fonte -->
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
+      <div class="card" style="background:var(--rosa-light);border-color:var(--rosa-border)">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--rosa);margin-bottom:4px">📱 PDV</div>
+        <div style="font-size:18px;font-weight:800;color:var(--rosa)">${totais.totalVendidoPdv} <span style="font-size:11px;font-weight:400">unid.</span></div>
+        <div style="font-size:12px;color:var(--text-3)">R$${totais.faturamentoPdv.toFixed(2)}</div>
       </div>
-      ${comRetorno.map(p => `
-        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr">
+      <div class="card" style="background:var(--azul-light);border-color:var(--azul-border)">
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--azul);margin-bottom:4px">📦 Retorno</div>
+        <div style="font-size:18px;font-weight:800;color:var(--azul)">${totais.totalVendidoRetorno} <span style="font-size:11px;font-weight:400">unid.</span></div>
+        <div style="font-size:12px;color:var(--text-3)">R$${totais.faturamentoRetorno.toFixed(2)}</div>
+      </div>
+    </div>
+
+    <!-- Tabela por produto -->
+    <div class="table-wrap">
+      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr">
+        <span>Produto</span>
+        <span>Entrada</span>
+        <span>🛒 PDV</span>
+        <span>📦 Retorno</span>
+        <span>Dif.</span>
+      </div>
+      ${sorted.map(p => {
+        const difOk   = p.diferenca === null || p.diferenca === 0;
+        const difPos  = p.diferenca > 0;
+        const difCor  = p.diferenca === null ? 'var(--text-4)'
+                      : p.diferenca === 0    ? 'var(--verde)'
+                      : p.diferenca > 0      ? 'var(--azul)'
+                      : 'var(--vermelho)';
+        return `
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr">
           <div>
             <div style="font-size:13px;font-weight:600">${esc(p.produto?.nome || '')}</div>
             <div style="font-size:10px;color:var(--text-4);font-family:monospace">${esc(p.produto?.codigo || '')}</div>
           </div>
           <div style="font-family:monospace;font-size:13px">${p.qtd_entrada}</div>
-          <div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--rosa)">${p.vendido}</div>
-          <div style="font-family:monospace;font-size:12px;color:var(--verde)">R$${p.receita.toFixed(2)}</div>
-        </div>`).join('')}
+          <div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--rosa)">
+            ${p.vendido_pdv || 0}
+            ${p.vendido_pdv > 0 ? `<div style="font-size:10px;color:var(--text-4)">R$${p.receita_pdv.toFixed(2)}</div>` : ''}
+          </div>
+          <div style="font-family:monospace;font-size:13px;color:var(--azul)">
+            ${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
+          </div>
+          <div style="font-family:monospace;font-size:13px;font-weight:700;color:${difCor}">
+            ${p.diferenca === null ? '—'
+              : p.diferenca === 0  ? '✓'
+              : p.diferenca > 0    ? '+' + p.diferenca
+              : p.diferenca}
+          </div>
+        </div>`;
+      }).join('')}
     </div>`;
 }
 

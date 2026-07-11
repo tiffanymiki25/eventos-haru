@@ -560,7 +560,8 @@ async function getRelatorio(res, body) {
   if (!body._user.ver_relatorio && body._user.perfil !== 'admin')
     return err(res, 'Sem permissão para acessar o relatório', 403);
 
-  const { data, error } = await supabase
+  // Busca produtos do evento
+  const { data: epData, error: epErr } = await supabase
     .from('evento_produtos')
     .select(`
       qtd_entrada, qtd_retorno, preco_venda,
@@ -569,23 +570,74 @@ async function getRelatorio(res, body) {
     .eq('evento_id', eventoId)
     .order('atualizado_em', { ascending: false });
 
-  if (error) return err(res, error.message);
+  if (epErr) return err(res, epErr.message);
 
-  // Calcula totais
-  let totalEntrada = 0, totalVendido = 0, faturamento = 0;
-  const produtos = data.map(p => {
-    const vendido = p.qtd_retorno !== null
-      ? p.qtd_entrada - p.qtd_retorno
-      : null;
-    const receita = vendido !== null ? vendido * p.preco_venda : 0;
+  // Busca vendas PDV do evento
+  const { data: vendasData } = await supabase
+    .from('vendas')
+    .select('itens')
+    .eq('evento_id', eventoId)
+    .eq('status', 'concluida');
+
+  // Agrega vendas por produto
+  const vendasPorProduto = {};
+  (vendasData || []).forEach(v => {
+    (v.itens || []).forEach(item => {
+      if (!vendasPorProduto[item.produto_id]) {
+        vendasPorProduto[item.produto_id] = { qtd: 0, receita: 0 };
+      }
+      vendasPorProduto[item.produto_id].qtd     += item.qtd;
+      vendasPorProduto[item.produto_id].receita += item.subtotal || (item.qtd * item.preco_unit);
+    });
+  });
+
+  // Monta resultado com PDV + retorno
+  let totalEntrada = 0, totalVendidoPdv = 0, totalVendidoRetorno = 0;
+  let faturamentoPdv = 0, faturamentoRetorno = 0;
+
+  const produtos = epData.map(p => {
+    const pid = p.produto?.id;
+
+    // Vendido pelo PDV
+    const pdv = vendasPorProduto[pid] || { qtd: 0, receita: 0 };
+
+    // Vendido pelo retorno físico
+    const vendidoRetorno = p.qtd_retorno !== null
+      ? p.qtd_entrada - p.qtd_retorno : null;
+    const receitaRetorno = vendidoRetorno !== null
+      ? vendidoRetorno * parseFloat(p.preco_venda) : null;
+
+    // Diferença entre PDV e retorno
+    const diferenca = vendidoRetorno !== null
+      ? vendidoRetorno - pdv.qtd : null;
+
     totalEntrada += p.qtd_entrada;
-    if (vendido !== null) { totalVendido += vendido; faturamento += receita; }
-    return { ...p, vendido, receita };
+    totalVendidoPdv     += pdv.qtd;
+    faturamentoPdv      += pdv.receita;
+    if (vendidoRetorno !== null) {
+      totalVendidoRetorno += vendidoRetorno;
+      faturamentoRetorno  += receitaRetorno;
+    }
+
+    return {
+      ...p,
+      vendido_pdv:      pdv.qtd,
+      receita_pdv:      pdv.receita,
+      vendido_retorno:  vendidoRetorno,
+      receita_retorno:  receitaRetorno,
+      diferenca
+    };
   });
 
   return ok(res, {
     produtos,
-    totais: { totalEntrada, totalVendido, faturamento }
+    totais: {
+      totalEntrada,
+      totalVendidoPdv,
+      totalVendidoRetorno,
+      faturamentoPdv,
+      faturamentoRetorno
+    }
   });
 }
 
