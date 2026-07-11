@@ -273,16 +273,28 @@ function atualizarBadgeEvento() {
   }
 }
 
-function atualizarResumo() {
-  const total      = produtos.length;
-  const comRetorno = produtos.filter(p => p.qtd_retorno !== null);
-  const vendidos   = comRetorno.reduce((s, p) => s + (p.qtd_entrada - p.qtd_retorno), 0);
-  const faturamento = comRetorno.reduce((s, p) =>
-    s + (p.qtd_entrada - p.qtd_retorno) * parseFloat(p.preco_venda), 0);
-  document.getElementById('stat-produtos').textContent    = total || '—';
-  document.getElementById('stat-vendidos').textContent    = vendidos || '—';
-  document.getElementById('stat-faturamento').textContent =
-    faturamento > 0 ? 'R$' + faturamento.toFixed(2) : '—';
+function atualizarResumo(vendidosPdv, faturamentoPdv) {
+  const total = produtos.length;
+
+  // Usa dados do PDV se disponíveis, senão cai para retorno físico
+  let vendidos    = vendidosPdv    ?? null;
+  let faturamento = faturamentoPdv ?? null;
+
+  if (vendidos === null) {
+    // Fallback: calcula pelo retorno físico
+    const comRetorno = produtos.filter(p => p.qtd_retorno !== null);
+    vendidos    = comRetorno.reduce((s, p) => s + (p.qtd_entrada - p.qtd_retorno), 0);
+    faturamento = comRetorno.reduce((s, p) =>
+      s + (p.qtd_entrada - p.qtd_retorno) * parseFloat(p.preco_venda), 0);
+  }
+
+  const el_prod = document.getElementById('stat-produtos');
+  const el_vend = document.getElementById('stat-vendidos');
+  const el_fat  = document.getElementById('stat-faturamento');
+
+  if (el_prod) el_prod.textContent = total || '—';
+  if (el_vend) el_vend.textContent = vendidos > 0 ? vendidos : '—';
+  if (el_fat)  el_fat.textContent  = faturamento > 0 ? 'R$' + faturamento.toFixed(2) : '—';
 }
 
 async function carregarTop10() {
@@ -308,10 +320,23 @@ async function carregarTop10() {
 async function prefetchProdutos() {
   if (!eventoAtivo) return;
   try {
-    const data = await api('getProdutosEvento', { eventoId: eventoAtivo.id });
-    produtos = data.produtos || [];
-    atualizarResumo();
-  } catch (e) {}
+    const [prodData, topData] = await Promise.all([
+      api('getProdutosEvento', { eventoId: eventoAtivo.id }),
+      api('getTopProdutos',    { eventoId: eventoAtivo.id, limit: 999 })
+    ]);
+    produtos = prodData.produtos || [];
+    // Calcula vendidos e faturamento pelo PDV
+    const ranking = topData.ranking || [];
+    const totalVendidos   = ranking.reduce((s, p) => s + p.qtd, 0);
+    const totalFaturamento = ranking.reduce((s, p) => s + p.receita, 0);
+    atualizarResumo(totalVendidos, totalFaturamento);
+  } catch (e) {
+    try {
+      const data = await api('getProdutosEvento', { eventoId: eventoAtivo.id });
+      produtos = data.produtos || [];
+      atualizarResumo();
+    } catch(e2) {}
+  }
 }
 
 // ═══════════════════════════════════════════
