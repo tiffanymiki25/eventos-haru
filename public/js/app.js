@@ -5,7 +5,7 @@
 const API = '/api';
 
 // ── ESTADO GLOBAL ──
-let sessao = JSON.parse(sessionStorage.getItem('haru_sessao') || 'null');
+let sessao = JSON.parse(localStorage.getItem('haru_sessao') || 'null');
 let eventoAtivo = JSON.parse(localStorage.getItem('haru_evento')   || 'null');
 let produtos    = [];
 let catalogo    = [];
@@ -208,8 +208,7 @@ async function doLogin() {
   try {
     const data = await api('login', { username: usuario, senha });
     sessao = { username: data.username, nome: data.nome, perfil: data.perfil, ver_relatorio: data.ver_relatorio };
-    // Salva com validade de 7 dias
-    sessionStorage.setItem('haru_sessao', JSON.stringify(sessao));
+    localStorage.setItem('haru_sessao', JSON.stringify(sessao));
     mostrarHome();
   } catch (e) {
     esconderLoading();
@@ -222,7 +221,7 @@ async function doLogin() {
 
 function doLogout() {
   sessao = null; eventoAtivo = null; produtos = []; catalogo = [];
-  sessionStorage.removeItem('haru_sessao');
+  localStorage.removeItem('haru_sessao');
   localStorage.removeItem('haru_evento');
   fecharModal('modal-usuario');
   showPage('page-login');
