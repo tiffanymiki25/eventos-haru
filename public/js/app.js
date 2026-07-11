@@ -72,7 +72,7 @@ async function api(action, body = {}) {
     ...body
   };
   const ctrl    = new AbortController();
-  const timeout = setTimeout(() => ctrl.abort(), 15000);
+  const timeout = setTimeout(() => ctrl.abort(), 8000);
   try {
     const res = await fetch(API, {
       method:  'POST',
@@ -161,12 +161,23 @@ async function goApp(tela) {
       try {
         const d = await api('getProdutosEvento', { eventoId: eventoAtivo.id });
         produtos = d.produtos || [];
-        await salvarCacheLocal(eventoAtivo.id, produtos);
+        // Salva cache para uso offline
+        await salvarCacheLocal(eventoAtivo.id, produtos).catch(() => {});
       } catch(e) {
-        // tenta cache offline
+        // Sem conexão — usa cache local
         const cache = await getCacheLocal(eventoAtivo.id).catch(() => null);
-        if (cache) { produtos = cache; toast('Usando dados offline', 'info'); }
+        if (cache && cache.length) {
+          produtos = cache;
+          toast('Modo offline — usando produtos em cache', 'info');
+        } else {
+          toast('Sem conexão e sem cache disponível', 'error');
+        }
       } finally { esconderLoading(); }
+    } else {
+      // Atualiza cache em background
+      api('getProdutosEvento', { eventoId: eventoAtivo.id })
+        .then(d => salvarCacheLocal(eventoAtivo.id, d.produtos || []))
+        .catch(() => {});
     }
     iniciarPdv();
   }
@@ -1415,6 +1426,10 @@ function iniciarMonitorOffline() {
   window.addEventListener('online',  () => { isOnline = true;  atualizarBadgeOffline(); sincronizarPendentes(); });
   window.addEventListener('offline', () => { isOnline = false; atualizarBadgeOffline(); });
   atualizarBadgeOffline();
+  // Tenta sincronizar pendentes a cada 30 segundos automaticamente
+  setInterval(() => {
+    sincronizarPendentes();
+  }, 30000);
 }
 
 function atualizarBadgeOffline() {
@@ -1434,20 +1449,28 @@ async function atualizarBadgePendentes() {
 }
 
 async function sincronizarPendentes() {
-  if (!isOnline) return;
   try {
     const pendentes = await getVendasPendentes();
     if (!pendentes.length) return;
+    let sincronizadas = 0;
     for (const v of pendentes) {
       try {
         const { id: localId, _pendente, _ts, ...venda } = v;
         await api('registrarVenda', venda);
         await deletarVendaPendente(localId);
-      } catch(e) { console.warn('Erro ao sincronizar venda:', e); }
+        sincronizadas++;
+      } catch(e) {
+        console.warn('Erro ao sincronizar venda:', e);
+        break; // Para se não tiver conexão
+      }
     }
-    await atualizarBadgePendentes();
-    toast('Vendas sincronizadas!', 'success');
-    await carregarVendas();
+    if (sincronizadas > 0) {
+      isOnline = true;
+      atualizarBadgeOffline();
+      await atualizarBadgePendentes();
+      toast(`${sincronizadas} venda(s) sincronizada(s)!`, 'success');
+      await carregarVendas();
+    }
   } catch(e) {}
 }
 
@@ -1684,17 +1707,40 @@ async function confirmarVenda() {
   };
 
   mostrarLoading('Registrando venda...');
+  let vendaSalva = false;
   try {
-    if (isOnline) {
-      await api('registrarVenda', venda);
-    } else {
-      await salvarVendaPendente(venda);
-      await atualizarBadgePendentes();
-      toast('Venda salva offline — será sincronizada quando houver conexão', 'info');
-    }
-    if (isOnline) toast('Venda registrada!', 'success');
+    // Tenta salvar online primeiro
+    await api('registrarVenda', venda);
+    toast('Venda registrada!', 'success');
+    vendaSalva = true;
+  } catch (e) {
+    // Se falhar por rede/timeout, salva localmente
+    const erroRede = e.name === 'AbortError' ||
+      e.message?.includes('Tempo esgotado') ||
+      e.message?.includes('Failed to fetch') ||
+      e.message?.includes('NetworkError') ||
+      e.message?.includes('Network request failed');
 
-    // Reset
+    if (erroRede) {
+      try {
+        await salvarVendaPendente(venda);
+        await atualizarBadgePendentes();
+        isOnline = false;
+        atualizarBadgeOffline();
+        toast('Sem conexão — venda salva localmente e será sincronizada depois ✓', 'info');
+        vendaSalva = true;
+      } catch (dbErr) {
+        toast('Erro ao salvar venda offline: ' + dbErr.message, 'error');
+      }
+    } else {
+      toast(e.message, 'error');
+    }
+  } finally {
+    esconderLoading();
+  }
+
+  if (vendaSalva) {
+    // Reset carrinho
     carrinho = []; pagamentoSelecionado = null;
     const desc = document.getElementById('carr-desconto');
     const rec  = document.getElementById('pdv-recebido');
@@ -1707,10 +1753,6 @@ async function confirmarVenda() {
     document.querySelectorAll('.pdv-pag-btn').forEach(b => b.classList.remove('selected'));
     atualizarFab();
     goSubPdv('home');
-  } catch (e) {
-    toast(e.message, 'error');
-  } finally {
-    esconderLoading();
   }
 }
 
