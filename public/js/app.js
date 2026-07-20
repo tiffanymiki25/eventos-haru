@@ -17,6 +17,7 @@ let produtoRetornoAtual = null;
 let scannerEntradaAtivo = false;
 let scannerRetornoAtivo = false;
 let csvDados = [];
+let relatorioData = null; // cache dos dados do relatório
 
 // ═══════════════════════════════════════════
 //  BOOT
@@ -887,6 +888,7 @@ async function carregarRelatorio() {
   mostrarLoading('Carregando relatório...');
   try {
     const data = await api('getRelatorio', { eventoId: eventoAtivo.id });
+    relatorioData = data;
     renderRelatorio(data);
   } catch (e) {
     toast(e.message, 'error');
@@ -1026,26 +1028,38 @@ function renderComparativo(data, el) {
 }
 
 function exportarCSV() {
-  if (!produtos.length) { toast('Nenhum produto para exportar', 'error'); return; }
-  const header = 'Produto,Código,Entrada,Retorno,Vendido,Preço Venda,Faturamento';
-  const rows = produtos.map(p => {
-    const vendido = p.qtd_retorno !== null ? p.qtd_entrada - p.qtd_retorno : '';
-    const fat = p.qtd_retorno !== null ? (p.qtd_entrada - p.qtd_retorno) * parseFloat(p.preco_venda) : '';
+  if (!relatorioData?.produtos?.length) {
+    toast('Carregue o relatório antes de exportar', 'error');
+    return;
+  }
+  const prods  = relatorioData.produtos;
+  const header = 'Produto,Código,Categoria,Entrada,Vendido PDV,Fat. PDV (R$),Retorno Físico,Vendido Retorno,Fat. Retorno (R$),Diferença';
+  const rows   = prods.map(p => {
+    const vendidoRet = p.vendido_retorno !== null ? p.vendido_retorno : '';
+    const fatRet     = p.receita_retorno !== null ? parseFloat(p.receita_retorno).toFixed(2) : '';
+    const dif        = p.diferenca       !== null ? p.diferenca : '';
     return [
-      `"${p.produto?.nome || ''}"`,
-      p.produto?.codigo || '',
+      `"${(p.produto?.nome || '').replace(/"/g, '""')}"`,
+      p.produto?.codigo    || '',
+      p.produto?.categoria || '',
       p.qtd_entrada,
-      p.qtd_retorno ?? '',
-      vendido,
-      parseFloat(p.preco_venda).toFixed(2),
-      fat !== '' ? fat.toFixed(2) : ''
+      p.vendido_pdv        || 0,
+      parseFloat(p.receita_pdv || 0).toFixed(2),
+      p.qtd_retorno        ?? '',
+      vendidoRet,
+      fatRet,
+      dif
     ].join(',');
   });
-  const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = `haru_${(eventoAtivo?.nome || 'evento').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0,10)}.csv`;
+  const bom  = '\uFEFF'; // BOM para Excel reconhecer UTF-8
+  const blob = new Blob([bom + [header, ...rows].join('\n')], { type: 'text/csv;charset=utf-8;' });
+  const a    = document.createElement('a');
+  a.href     = URL.createObjectURL(blob);
+  a.download = `haru_${(eventoAtivo?.nome || 'evento').replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`;
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
   toast('CSV exportado!', 'success');
 }
 
