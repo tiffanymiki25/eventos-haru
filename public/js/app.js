@@ -954,8 +954,9 @@ function renderRelatorio(data) {
 
     <!-- Tabela por produto -->
     <div class="table-wrap">
-      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr">
+      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr">
         <span>Produto</span>
+        <span>Vlr. Unit.</span>
         <span>Entrada</span>
         <span>🛒 PDV</span>
         <span>📦 Retorno</span>
@@ -969,11 +970,12 @@ function renderRelatorio(data) {
                       : p.diferenca > 0      ? 'var(--azul)'
                       : 'var(--vermelho)';
         return `
-        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr">
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr">
           <div>
             <div style="font-size:13px;font-weight:600">${esc(p.produto?.nome || '')}</div>
             <div style="font-size:10px;color:var(--text-4);font-family:monospace">${esc(p.produto?.codigo || '')}</div>
           </div>
+          <div style="font-family:monospace;font-size:12px;color:var(--text-3)">R$${parseFloat(p.preco_venda).toFixed(2)}</div>
           <div style="font-family:monospace;font-size:13px">${p.qtd_entrada}</div>
           <div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--rosa)">
             ${p.vendido_pdv || 0}
@@ -1033,7 +1035,7 @@ function exportarCSV() {
     return;
   }
   const prods  = relatorioData.produtos;
-  const header = 'Produto,Código,Categoria,Entrada,Vendido PDV,Fat. PDV (R$),Retorno Físico,Vendido Retorno,Fat. Retorno (R$),Diferença';
+  const header = 'Produto,Código,Categoria,Vlr. Unitário,Entrada,Vendido PDV,Fat. PDV (R$),Retorno Físico,Vendido Retorno,Fat. Retorno (R$),Diferença';
   const rows   = prods.map(p => {
     const vendidoRet = p.vendido_retorno !== null ? p.vendido_retorno : '';
     const fatRet     = p.receita_retorno !== null ? parseFloat(p.receita_retorno).toFixed(2) : '';
@@ -1042,6 +1044,7 @@ function exportarCSV() {
       `"${(p.produto?.nome || '').replace(/"/g, '""')}"`,
       p.produto?.codigo    || '',
       p.produto?.categoria || '',
+      parseFloat(p.preco_venda || 0).toFixed(2),
       p.qtd_entrada,
       p.vendido_pdv        || 0,
       parseFloat(p.receita_pdv || 0).toFixed(2),
