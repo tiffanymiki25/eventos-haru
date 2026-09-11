@@ -311,7 +311,7 @@ async function salvarProduto(res, body) {
     // Criar produto novo
     ({ data, error } = await supabase
       .from('produtos_catalogo')
-      .insert(registro)
+      .upsert(registro, { onConflict: 'codigo' })
       .select()
       .single());
   }
