@@ -314,6 +314,21 @@ async function salvarProduto(res, body) {
       .upsert(registro, { onConflict: 'codigo' })
       .select()
       .single());
+
+    // O código é único no catálogo. Reutilizar o produto já cadastrado evita que
+    // uma tentativa simultânea (ou uma versão antiga do PWA) bloqueie a entrada
+    // do produto no evento.
+    if (error?.code === '23505' && registro.codigo) {
+      ({ data, error } = await supabase
+        .from('produtos_catalogo')
+        .select('*')
+        .eq('codigo', registro.codigo)
+        .single());
+      if (!error) {
+        await addLog(body.username, null, 'PRODUTO_REUTILIZADO', data.nome);
+        return ok(res, { ok: true, produto: data, reutilizado: true });
+      }
+    }
   }
 
   if (error) return err(res, error.message);

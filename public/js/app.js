@@ -10,6 +10,10 @@ let eventoAtivo = JSON.parse(localStorage.getItem('haru_evento')   || 'null');
 let produtos    = [];
 let catalogo    = [];
 let produtoEditandoId = null;
+// Produto do catálogo localizado pelo código de barras enquanto uma entrada é criada.
+// Ele não é o mesmo que produtoEditandoId: este último representa uma entrada já
+// cadastrada no evento atual.
+let produtoCatalogoSelecionadoId = null;
 let produtoAdminEditandoId = null;
 let usuarioAdminEditandoId = null;
 let eventoSelecionadoModal = null;
@@ -542,6 +546,7 @@ function renderEntrada() {
 
 function abrirModalEntrada(produtoExistente = null) {
   produtoEditandoId = null;
+  produtoCatalogoSelecionadoId = null;
   document.getElementById('modal-entrada-titulo').textContent  = 'Adicionar Produto';
   document.getElementById('entrada-codigo').value              = '';
   document.getElementById('entrada-nome').value                = '';
@@ -579,11 +584,14 @@ function fecharModalEntrada() {
 
 async function buscarNoCatalogo() {
   const codigo = document.getElementById('entrada-codigo').value.trim();
+  produtoCatalogoSelecionadoId = null;
   if (!codigo || codigo.length < 3) return;
   try {
     const data = await api('getCatalogo', { busca: codigo });
     const prod = data.produtos?.find(p => p.codigo === codigo);
-    if (prod) {
+    // Ignora uma busca que terminou depois que o código já foi alterado.
+    if (prod && document.getElementById('entrada-codigo').value.trim() === codigo) {
+      produtoCatalogoSelecionadoId = prod.id;
       document.getElementById('entrada-nome').value       = prod.nome;
       document.getElementById('entrada-preco-loja').value = prod.preco_loja;
       atualizarPrecoSugerido();
@@ -615,16 +623,19 @@ async function salvarEntrada() {
 
   mostrarLoading('Salvando...');
   try {
-    // 1. Salva/atualiza no catálogo
+    // 1. Reutiliza o item localizado no catálogo, ou salva/atualiza quando necessário.
     const categoria = document.getElementById('entrada-categoria')?.value.trim() || null;
-    const catData = await api('salvarProduto', {
-      id: produtoEditandoId || undefined,
-      codigo: codigo || null,
-      nome,
-      preco_loja: precoLoja,
-      categoria
-    });
-    const produtoId = catData.produto.id;
+    let produtoId = produtoCatalogoSelecionadoId;
+    if (!produtoId || produtoEditandoId) {
+      const catData = await api('salvarProduto', {
+        id: produtoEditandoId || undefined,
+        codigo: codigo || null,
+        nome,
+        preco_loja: precoLoja,
+        categoria
+      });
+      produtoId = catData.produto.id;
+    }
 
     // 2. Adiciona ao evento
     if (produtoEditandoId) {
