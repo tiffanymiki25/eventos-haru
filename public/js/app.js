@@ -954,11 +954,11 @@ function renderRelatorio(data) {
 
     <!-- Tabela por produto -->
     <div class="table-wrap">
-      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr">
+      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr">
         <span>Produto</span>
         <span>Vlr. Unit.</span>
         <span>Entrada</span>
-        <span>🛒 PDV</span>
+        <span>🛒 PDV</span><span>Estoque</span>
         <span>📦 Retorno</span>
         <span>Dif.</span>
       </div>
@@ -970,7 +970,7 @@ function renderRelatorio(data) {
                       : p.diferenca > 0      ? 'var(--azul)'
                       : 'var(--vermelho)';
         return `
-        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr">
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr">
           <div>
             <div style="font-size:13px;font-weight:600">${esc(p.produto?.nome || '')}</div>
             <div style="font-size:10px;color:var(--text-4);font-family:monospace">${esc(p.produto?.codigo || '')}</div>
@@ -981,8 +981,8 @@ function renderRelatorio(data) {
             ${p.vendido_pdv || 0}
             ${p.vendido_pdv > 0 ? `<div style="font-size:10px;color:var(--text-4)">R$${p.receita_pdv.toFixed(2)}</div>` : ''}
           </div>
-          <div style="font-family:monospace;font-size:13px;color:var(--azul)">
-            ${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
+          <div style="font-family:monospace;font-size:13px;font-weight:700;color:${p.qtd_entrada - (p.vendido_pdv || 0) > 0 ? 'var(--verde)' : 'var(--vermelho)'}">${p.qtd_entrada - (p.vendido_pdv || 0)}</div><div style="font-family:monospace;font-size:13px;color:var(--azul)">
+            ${p.qtd_entrada - (p.vendido_pdv || 0)}</div><div style="font-family:monospace;font-size:13px;color:var(--azul)">${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
           </div>
           <div style="font-family:monospace;font-size:13px;font-weight:700;color:${difCor}">
             ${p.diferenca === null ? '—'
