@@ -982,7 +982,7 @@ function renderRelatorio(data) {
             ${p.vendido_pdv > 0 ? `<div style="font-size:10px;color:var(--text-4)">R$${p.receita_pdv.toFixed(2)}</div>` : ''}
           </div>
           <div style="font-family:monospace;font-size:13px;font-weight:700;color:${p.qtd_entrada - (p.vendido_pdv || 0) > 0 ? 'var(--verde)' : 'var(--vermelho)'}">${p.qtd_entrada - (p.vendido_pdv || 0)}</div><div style="font-family:monospace;font-size:13px;color:var(--azul)">
-            ${p.qtd_entrada - (p.vendido_pdv || 0)}</div><div style="font-family:monospace;font-size:13px;color:var(--azul)">${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
+            ${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
           </div>
           <div style="font-family:monospace;font-size:13px;font-weight:700;color:${difCor}">
             ${p.diferenca === null ? '—'
