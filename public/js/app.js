@@ -941,12 +941,12 @@ function renderRelatorio(data) {
     <!-- Totais por fonte -->
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:14px">
       <div class="card" style="background:var(--rosa-light);border-color:var(--rosa-border)">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--rosa);margin-bottom:4px">📱 PDV</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--rosa);margin-bottom:4px">📱 VENDIDO NO PDV</div>
         <div style="font-size:18px;font-weight:800;color:var(--rosa)">${totais.totalVendidoPdv} <span style="font-size:11px;font-weight:400">unid.</span></div>
         <div style="font-size:12px;color:var(--text-3)">R$${totais.faturamentoPdv.toFixed(2)}</div>
       </div>
       <div class="card" style="background:var(--azul-light);border-color:var(--azul-border)">
-        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--azul);margin-bottom:4px">📦 Retorno</div>
+        <div style="font-size:10px;font-weight:700;text-transform:uppercase;color:var(--azul);margin-bottom:4px">📦 VENDIDO FÍSICO</div>
         <div style="font-size:18px;font-weight:800;color:var(--azul)">${totais.totalVendidoRetorno} <span style="font-size:11px;font-weight:400">unid.</span></div>
         <div style="font-size:12px;color:var(--text-3)">R$${totais.faturamentoRetorno.toFixed(2)}</div>
       </div>
@@ -954,12 +954,13 @@ function renderRelatorio(data) {
 
     <!-- Tabela por produto -->
     <div class="table-wrap">
-      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr">
+      <div class="table-header" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr">
         <span>Produto</span>
         <span>Vlr. Unit.</span>
         <span>Entrada</span>
         <span>🛒 PDV</span><span>Estoque</span>
-        <span>📦 Retorno</span>
+        <span>📦 Retorno físico</span>
+        <span>Vendido físico</span>
         <span>Dif.</span>
       </div>
       ${sorted.map(p => {
@@ -970,7 +971,7 @@ function renderRelatorio(data) {
                       : p.diferenca > 0      ? 'var(--azul)'
                       : 'var(--vermelho)';
         return `
-        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr">
+        <div class="table-row" style="grid-template-columns:2fr 1fr 1fr 1fr 1fr 1fr 1fr 1fr">
           <div>
             <div style="font-size:13px;font-weight:600">${esc(p.produto?.nome || '')}</div>
             <div style="font-size:10px;color:var(--text-4);font-family:monospace">${esc(p.produto?.codigo || '')}</div>
@@ -982,7 +983,7 @@ function renderRelatorio(data) {
             ${p.vendido_pdv > 0 ? `<div style="font-size:10px;color:var(--text-4)">R$${p.receita_pdv.toFixed(2)}</div>` : ''}
           </div>
           <div style="font-family:monospace;font-size:13px;font-weight:700;color:${p.qtd_entrada - (p.vendido_pdv || 0) > 0 ? 'var(--verde)' : 'var(--vermelho)'}">${p.qtd_entrada - (p.vendido_pdv || 0)}</div><div style="font-family:monospace;font-size:13px;color:var(--azul)">
-            ${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
+            ${p.qtd_retorno !== null ? p.qtd_retorno : '<span style="color:var(--text-4)">—</span>'}</div><div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--azul)">${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
           </div>
           <div style="font-family:monospace;font-size:13px;font-weight:700;color:${difCor}">
             ${p.diferenca === null ? '—'
