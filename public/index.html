@@ -2,13 +2,39 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
   <meta name="theme-color" content="#f43f5e"/>
   <meta name="apple-mobile-web-app-capable" content="yes"/>
   <meta name="apple-mobile-web-app-title" content="Eventos Haru"/>
   <title>Eventos Haru</title>
   <link rel="manifest" href="/manifest.json"/>
   <link rel="stylesheet" href="/css/style.css"/>
+  <style>
+    /* Melhora a leitura e permite que cada pessoa use o zoom do próprio aparelho. */
+    html { font-size: 112.5%; }
+    body { font-size: 16px; line-height: 1.5; }
+    input, select, textarea, button { font-size: 16px !important; }
+    .header-title, .modal-title { font-size: 18px !important; }
+    .section-title, .label, .input-hint, .evento-badge-info .ev-label,
+    .evento-badge-info .ev-data, .stat-lbl, .product-code, .product-by,
+    .pill, .badge, .table-header, .admin-nav-btn, .pdv-grade-item .pgi-codigo,
+    .pdv-grade-item .pgi-estoque, .sorvete-categoria-titulo, .sync-pendente {
+      font-size: 12px !important;
+    }
+    .home-btn .hb-desc, .pdv-home-btn .phb-desc, .pdv-sub-btn .psb-desc,
+    .header-user, .avatar, .product-name, .table-row, .tab, .pdv-pag-btn,
+    .pdv-grade-item .pgi-nome, .pdv-grade-item .pgi-preco,
+    .pdv-rapido-item .pri-nome, .pdv-rapido-item .pri-preco {
+      font-size: 15px !important;
+    }
+    [style*="font-size:9px"]  { font-size: 11px !important; }
+    [style*="font-size:10px"] { font-size: 12px !important; }
+    [style*="font-size:11px"] { font-size: 13px !important; }
+    [style*="font-size:12px"] { font-size: 14px !important; }
+    [style*="font-size:13px"] { font-size: 15px !important; }
+    [style*="font-size:14px"] { font-size: 16px !important; }
+    [style*="font-size:15px"] { font-size: 17px !important; }
+  </style>
 </head>
 <body>
 
@@ -749,8 +775,8 @@
     <div id="pdv-troco-wrap" style="display:none">
       <div class="card" style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px">
-          <span style="font-size:13px;color:var(--text-3)">Valor Recebido (R$)</span>
-          <input type="number" id="pdv-recebido" value="" min="0" step="0.50" placeholder="0,00"
+          <span style="font-size:13px;color:var(--text-3)">Valor Recebido (R$) <small>opcional</small></span>
+          <input type="number" id="pdv-recebido" value="" min="0" step="0.50" placeholder="Igual ao total"
                  style="width:110px;text-align:right;font-family:monospace;font-size:13px;background:var(--surface2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:6px 10px;color:var(--text);outline:none"
                  oninput="calcularTroco()"/>
         </div>

@@ -1769,7 +1769,10 @@ function calcularTroco() {
   const desconto = parseFloat(document.getElementById('carr-desconto')?.value) || 0;
   const subtotal = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
   const total    = Math.max(0, subtotal - desconto);
-  const recebido = parseFloat(document.getElementById('pdv-recebido')?.value) || 0;
+  const campoRecebido = document.getElementById('pdv-recebido');
+  const recebido = campoRecebido?.value.trim() === ''
+    ? total
+    : parseFloat(campoRecebido?.value) || 0;
   const troco    = recebido - total;
   const el       = document.getElementById('pdv-troco-val');
   if (el) {
@@ -1787,8 +1790,11 @@ function verificarConfirmar() {
   const desconto    = parseFloat(document.getElementById('carr-desconto')?.value) || 0;
   const subtotal    = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
   const total       = Math.max(0, subtotal - desconto);
-  const trocoOk     = pagamentoSelecionado !== 'dinheiro' ||
-    (parseFloat(document.getElementById('pdv-recebido')?.value) || 0) >= total;
+  const campoRecebido = document.getElementById('pdv-recebido');
+  const recebido = campoRecebido?.value.trim() === ''
+    ? total
+    : parseFloat(campoRecebido?.value) || 0;
+  const trocoOk     = pagamentoSelecionado !== 'dinheiro' || recebido >= total;
   btn.disabled = !(temItens && temPag && trocoOk);
 }
 
@@ -1798,8 +1804,10 @@ async function confirmarVenda() {
   const desconto       = parseFloat(document.getElementById('carr-desconto')?.value) || 0;
   const subtotal       = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
   const total          = Math.max(0, subtotal - desconto);
+  const campoRecebido = document.getElementById('pdv-recebido');
   const valor_recebido = pagamentoSelecionado === 'dinheiro'
-    ? parseFloat(document.getElementById('pdv-recebido')?.value) || 0 : null;
+    ? (campoRecebido?.value.trim() === '' ? total : parseFloat(campoRecebido?.value) || 0)
+    : null;
   const itens = carrinho.map(i => ({
     produto_id: i.produto_id, nome: i.nome,
     qtd: i.qtd, preco_unit: i.preco_unit, subtotal: i.qtd * i.preco_unit
