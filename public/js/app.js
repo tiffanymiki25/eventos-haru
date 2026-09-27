@@ -969,12 +969,16 @@ function renderRelatorio(data) {
         <span>Produto</span>
         <span>Vlr. Unit.</span>
         <span>Entrada</span>
-        <span>🛒 PDV</span><span>Estoque</span>
+        <span>🛒 PDV</span>
+        <span>Estoque</span>
         <span>📦 Retorno físico</span>
         <span>Vendido físico</span>
         <span>Dif.</span>
       </div>
       ${sorted.map(p => {
+        // qtd_entrada já é atualizado a cada reposição. O saldo atual deve
+        // refletir somente as vendas confirmadas no PDV.
+        const estoqueAtual = p.qtd_entrada - (p.vendido_pdv || 0);
         const difOk   = p.diferenca === null || p.diferenca === 0;
         const difPos  = p.diferenca > 0;
         const difCor  = p.diferenca === null ? 'var(--text-4)'
@@ -993,8 +997,14 @@ function renderRelatorio(data) {
             ${p.vendido_pdv || 0}
             ${p.vendido_pdv > 0 ? `<div style="font-size:10px;color:var(--text-4)">R$${p.receita_pdv.toFixed(2)}</div>` : ''}
           </div>
-          <div style="font-family:monospace;font-size:13px;font-weight:700;color:${p.qtd_entrada - (p.vendido_pdv || 0) > 0 ? 'var(--verde)' : 'var(--vermelho)'}">${p.qtd_entrada - (p.vendido_pdv || 0)}</div><div style="font-family:monospace;font-size:13px;color:var(--azul)">
-            ${p.qtd_retorno !== null ? p.qtd_retorno : '<span style="color:var(--text-4)">—</span>'}</div><div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--azul)">${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
+          <div style="font-family:monospace;font-size:13px;font-weight:700;color:${estoqueAtual > 0 ? 'var(--verde)' : estoqueAtual < 0 ? 'var(--vermelho)' : 'var(--text-4)'}">
+            ${estoqueAtual}
+          </div>
+          <div style="font-family:monospace;font-size:13px;color:var(--azul)">
+            ${p.qtd_retorno !== null ? p.qtd_retorno : '<span style="color:var(--text-4)">—</span>'}
+          </div>
+          <div style="font-family:monospace;font-size:13px;font-weight:700;color:var(--azul)">
+            ${p.vendido_retorno !== null ? p.vendido_retorno : '<span style="color:var(--text-4)">—</span>'}
           </div>
           <div style="font-family:monospace;font-size:13px;font-weight:700;color:${difCor}">
             ${p.diferenca === null ? '—'
@@ -1047,7 +1057,7 @@ function exportarCSV() {
     return;
   }
   const prods  = relatorioData.produtos;
-  const header = 'Produto,Código,Categoria,Vlr. Unitário,Entrada,Vendido PDV,Fat. PDV (R$),Retorno Físico,Vendido Retorno,Fat. Retorno (R$),Diferença';
+  const header = 'Produto,Código,Categoria,Vlr. Unitário,Entrada,Vendido PDV,Estoque Atual,Fat. PDV (R$),Retorno Físico,Vendido Retorno,Fat. Retorno (R$),Diferença';
   const rows   = prods.map(p => {
     const vendidoRet = p.vendido_retorno !== null ? p.vendido_retorno : '';
     const fatRet     = p.receita_retorno !== null ? parseFloat(p.receita_retorno).toFixed(2) : '';
@@ -1059,6 +1069,7 @@ function exportarCSV() {
       parseFloat(p.preco_venda || 0).toFixed(2),
       p.qtd_entrada,
       p.vendido_pdv        || 0,
+      p.qtd_entrada - (p.vendido_pdv || 0),
       parseFloat(p.receita_pdv || 0).toFixed(2),
       p.qtd_retorno        ?? '',
       vendidoRet,
@@ -1652,6 +1663,40 @@ function adicionarAoCarrinho(produto) {
   toast((produto.produto?.nome || produto.nome || '') + ' adicionado!', 'success');
 }
 
+function abrirModalProdutoAvulso() {
+  const nome = document.getElementById('avulso-nome');
+  const valor = document.getElementById('avulso-valor');
+  if (nome) nome.value = '';
+  if (valor) valor.value = '';
+  abrirModal('modal-produto-avulso');
+  setTimeout(() => nome?.focus(), 200);
+}
+
+function adicionarProdutoAvulso() {
+  const nome = document.getElementById('avulso-nome')?.value.trim();
+  const valor = parseFloat(document.getElementById('avulso-valor')?.value);
+
+  if (!nome) {
+    toast('Informe o nome do produto', 'error');
+    return;
+  }
+  if (!Number.isFinite(valor) || valor <= 0) {
+    toast('Informe um valor válido', 'error');
+    return;
+  }
+
+  carrinho.push({
+    produto_id: null,
+    nome,
+    preco_unit: valor,
+    qtd: 1,
+    avulso: true
+  });
+  fecharModal('modal-produto-avulso');
+  atualizarFab();
+  toast(nome + ' adicionado!', 'success');
+}
+
 function atualizarFab() {
   const total = carrinho.reduce((s, i) => s + i.qtd * i.preco_unit, 0);
   const qtd   = carrinho.reduce((s, i) => s + i.qtd, 0);
@@ -1810,7 +1855,8 @@ async function confirmarVenda() {
     : null;
   const itens = carrinho.map(i => ({
     produto_id: i.produto_id, nome: i.nome,
-    qtd: i.qtd, preco_unit: i.preco_unit, subtotal: i.qtd * i.preco_unit
+    qtd: i.qtd, preco_unit: i.preco_unit, subtotal: i.qtd * i.preco_unit,
+    avulso: !!i.avulso
   }));
   const venda = {
     eventoId: eventoAtivo.id, itens, subtotal, desconto, total,
