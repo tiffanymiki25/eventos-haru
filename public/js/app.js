@@ -1089,6 +1089,81 @@ function exportarCSV() {
   toast('CSV exportado!', 'success');
 }
 
+function exportarPDF() {
+  if (!relatorioData?.produtos?.length) {
+    toast('Carregue o relatório antes de exportar', 'error');
+    return;
+  }
+
+  const { produtos, totais } = relatorioData;
+  const moeda = valor => `R$ ${Number(valor || 0).toFixed(2).replace('.', ',')}`;
+  const numero = valor => valor ?? '—';
+  const agora = new Date().toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
+  const linhas = [...produtos]
+    .sort((a, b) => (b.vendido_pdv || 0) - (a.vendido_pdv || 0))
+    .map(p => {
+      const estoque = (p.qtd_entrada || 0) - (p.vendido_pdv || 0);
+      const diferenca = p.diferenca === null
+        ? '—'
+        : p.diferenca > 0 ? `+${p.diferenca}` : p.diferenca;
+      return `<tr>
+        <td><strong>${esc(p.produto?.nome || 'Produto sem nome')}</strong><small>${esc(p.produto?.codigo || '')}</small></td>
+        <td>${moeda(p.preco_venda)}</td>
+        <td>${numero(p.qtd_entrada)}</td>
+        <td>${numero(p.vendido_pdv)}</td>
+        <td>${numero(estoque)}</td>
+        <td>${numero(p.qtd_retorno)}</td>
+        <td>${numero(p.vendido_retorno)}</td>
+        <td>${diferenca}</td>
+      </tr>`;
+    }).join('');
+
+  const janela = window.open('', '_blank');
+  if (!janela) {
+    toast('Permita a abertura de janelas para exportar o PDF', 'error');
+    return;
+  }
+
+  janela.document.title = `Relatório - ${eventoAtivo?.nome || 'Evento'}`;
+  janela.document.write(`<!doctype html>
+    <html lang="pt-BR"><head><meta charset="utf-8"/>
+    <title>${esc(janela.document.title)}</title>
+    <style>
+      @page { size: A4 landscape; margin: 12mm; }
+      * { box-sizing: border-box; }
+      body { margin: 0; font-family: Arial, sans-serif; color: #202124; font-size: 10px; }
+      h1 { margin: 0; font-size: 21px; color: #e11d48; }
+      .subtitle { margin: 5px 0 18px; color: #6b7280; font-size: 11px; }
+      .summary { display: grid; grid-template-columns: repeat(3, 1fr); gap: 9px; margin-bottom: 16px; }
+      .summary-card { border: 1px solid #e5e7eb; border-radius: 7px; padding: 10px; background: #fafafa; }
+      .summary-card strong { display: block; margin-top: 3px; color: #111827; font-size: 16px; }
+      .summary-card span { color: #6b7280; font-size: 9px; text-transform: uppercase; letter-spacing: .04em; }
+      table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+      th { background: #f43f5e; color: #fff; font-size: 8px; text-transform: uppercase; letter-spacing: .02em; }
+      th, td { border: 1px solid #e5e7eb; padding: 6px 5px; text-align: right; vertical-align: middle; word-break: break-word; }
+      th:first-child, td:first-child { width: 30%; text-align: left; }
+      td small { display: block; margin-top: 2px; color: #6b7280; font-family: monospace; font-size: 8px; }
+      tr:nth-child(even) { background: #fafafa; }
+      footer { margin-top: 12px; color: #6b7280; font-size: 8px; text-align: right; }
+      .hint { margin: 0 0 12px; color: #6b7280; font-size: 11px; }
+      @media print { .hint { display: none; } }
+    </style></head><body>
+      <p class="hint">Na janela de impressão, selecione “Salvar como PDF” e mantenha A4 na orientação horizontal.</p>
+      <h1>Relatório do evento</h1>
+      <p class="subtitle">${esc(eventoAtivo?.nome || 'Evento')} · Gerado em ${agora}</p>
+      <section class="summary">
+        <div class="summary-card"><span>Produtos</span><strong>${produtos.length}</strong></div>
+        <div class="summary-card"><span>Vendido no PDV</span><strong>${numero(totais.totalVendidoPdv)} unid.</strong><small>${moeda(totais.faturamentoPdv)}</small></div>
+        <div class="summary-card"><span>Vendido físico</span><strong>${numero(totais.totalVendidoRetorno)} unid.</strong><small>${moeda(totais.faturamentoRetorno)}</small></div>
+      </section>
+      <table><thead><tr><th>Produto</th><th>Vlr. unit.</th><th>Entrada</th><th>PDV</th><th>Estoque</th><th>Retorno físico</th><th>Vendido físico</th><th>Dif.</th></tr></thead>
+      <tbody>${linhas}</tbody></table>
+      <footer>Eventos Haru · Relatório A4</footer>
+      <script>window.addEventListener('load', () => window.print());<\/script>
+    </body></html>`);
+  janela.document.close();
+}
+
 // ═══════════════════════════════════════════
 //  PESQUISA
 // ═══════════════════════════════════════════

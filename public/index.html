@@ -243,10 +243,16 @@
       <div class="back-btn" onclick="voltarHome()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 12H5M12 5l-7 7 7 7"/></svg></div>
       <span class="header-title">Relatório</span>
     </div>
-    <button class="btn btn-secondary btn-sm" style="width:auto" onclick="exportarCSV()">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
-      CSV
-    </button>
+    <div style="display:flex;gap:6px">
+      <button class="btn btn-secondary btn-sm" style="width:auto" onclick="exportarPDF()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 2h9l5 5v15H6zM15 2v6h6M8 17h8M8 13h8"/></svg>
+        PDF A4
+      </button>
+      <button class="btn btn-secondary btn-sm" style="width:auto" onclick="exportarCSV()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+        CSV
+      </button>
+    </div>
   </div>
   <div class="tabs">
     <button class="tab active" id="tab-rel-evento" onclick="switchRelTab('evento')">Evento Atual</button>
